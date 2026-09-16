@@ -13,6 +13,7 @@
 | 03-decisions.md | 선택 이유, 확정/제안/보류 구분 |
 | 04-status-and-handoff.md | 실제 완료 상태, 다음 작업, 인계 지침 |
 | 05-conversations-topics-and-map.md | S3 이후 대화·주제·지도 확장 설계 |
+| 06-continuity-evaluation.md | 연속성 평가 관측 기록과 한계 |
 
 이번 문서는 현재 대화에서 합의한 내용을 보존하는 TypeScript 실사용 버전의 계획이다. 이전 `docs/archive/personal-ai-mvp-design.md`는 Spring 기반 초기 대안으로 보존한다. 이전 문서의 스택·작업 번호·기간을 이번 버전의 현재 계획으로 적용하지 않는다. 새 코드 저장소가 생기면 네 문서를 함께 옮겨 버전 관리한다.
 

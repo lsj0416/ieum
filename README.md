@@ -62,6 +62,7 @@ Vercel에서 변수 타입을 고를 때 `NEXT_PUBLIC_`으로 시작하는 둘�
 - [결정 기록](docs/03-decisions.md)
 - [현재 상태와 새 세션 인계](docs/04-status-and-handoff.md)
 - [대화·주제·지도 확장 지침](docs/05-conversations-topics-and-map.md)
+- [연속성 평가 기록](docs/06-continuity-evaluation.md)
 - [보존된 Spring 초기 설계](docs/archive/personal-ai-mvp-design.md)
 
 새 세션에서는 상태 문서 → 방향 → 결정 기록 → 로드맵 → 확장 지침 순서로 읽습니다.
