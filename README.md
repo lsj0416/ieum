@@ -27,6 +27,8 @@ Node 24 · Next.js 16 (App Router) · Tailwind CSS v4
 
 ## 배포
 
+운영 주소: https://ieum-theta.vercel.app
+
 Vercel에 배포합니다. 환경 변수 네 개를 Production과 Preview 양쪽에 등록해야 합니다.
 
 | 변수 | 비고 |
@@ -35,6 +37,8 @@ Vercel에 배포합니다. 환경 변수 네 개를 Production과 Preview 양쪽
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | 브라우저 노출 |
 | `SUPABASE_SECRET_KEY` | 서버 전용 |
 | `OWNER_EMAILS` | 비우면 아무도 로그인하지 못합니다 |
+
+Vercel에서 변수 타입을 고를 때 `NEXT_PUBLIC_`으로 시작하는 둘은 **Config**, `SUPABASE_SECRET_KEY`는 **Secret**으로 만듭니다. publishable 키는 어차피 브라우저 번들에 들어가므로 Secret으로 두면 Vercel이 경고합니다. 저장된 Secret은 Config로 바꿀 수 없으니, 잘못 만들었다면 지우고 다시 만들어야 합니다.
 
 `NEXT_PUBLIC_` 변수는 **빌드 시점에 코드에 박힙니다.** 배포 후에 변수를 추가했다면 반드시 빌드 캐시를 끄고 Redeploy해야 합니다. 변수만 등록하고 재배포하지 않으면 이전 빌드 결과물이 그대로 서빙되어 계속 실패합니다.
 
