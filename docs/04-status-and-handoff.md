@@ -24,7 +24,7 @@
 | RLS 정책 | 완료 | `conversations`/`messages`에 적용. 임시 사용자 2명으로 실제 요청을 보내 검증(D20 해소) |
 | 대화 저장 스키마 | 완료 | `supabase/migrations/0001_conversations_messages.sql` 적용. 앱 코드에서 읽고 쓰는 경로는 아직 없다 |
 | Vercel 배포 | 완료 | https://ieum-theta.vercel.app · 휴대폰에서 로그인 성공. `/chat`·`/`는 비인증 시 307로 `/login` |
-| LLM 연동 | 완료 | OpenAI `gpt-5.6-terra`, 월 상한 $30. 실제 호출 성공과 사용량 기록 확인 |
+| LLM 연동 | 완료 | OpenAI, 개발 중 모델은 `gpt-5.6-luna`(D28), 월 상한 $30. 실제 호출과 사용량 기록 확인 |
 | 대화 API | 완료 | `POST /api/chat`. 인증·검증·중복 방지·실패 상태 저장 |
 | 대화 UI | 완료 | 스트리밍 표시, 새로고침 복원, 실패·부분 답변 구분, 재시도. 360px 넘침 없음 |
 | 끊긴 생성 복구 | 완료 | 3분 넘은 pending은 내용 유무에 따라 partial/failed로 정리하고 길을 터준다 |
