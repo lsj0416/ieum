@@ -26,11 +26,26 @@ export function ChatView({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   // 새 메시지가 붙으면 아래로 내린다.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, turn]);
+
+  // 입력이 길어지면 입력칸이 함께 자란다.
+  //
+  // CSS의 field-sizing으로 할 수 있지만 iOS Safari가 아직 받지 않는다.
+  // 높이를 auto로 되돌린 뒤 scrollHeight를 읽어야 줄어들 때도 맞는다.
+  // 그대로 두면 한 번 커진 높이가 내려오지 않는다.
+  //
+  // 최대 높이는 CSS(max-h)가 잡고, 넘으면 입력칸 안에서 스크롤된다.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   async function send(content: string, clientRequestId: string) {
     setSending(true);
@@ -189,6 +204,7 @@ export function ChatView({
 
       <form onSubmit={onSubmit} className="flex items-end gap-2 pt-3">
         <textarea
+          ref={composerRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -205,7 +221,8 @@ export function ChatView({
           }}
           rows={1}
           placeholder="메시지를 입력하세요"
-          className="min-h-11 w-full min-w-0 flex-1 resize-none rounded-md border border-black/15 bg-transparent px-3 py-2.5 text-base dark:border-white/20"
+          // max-h는 대략 네 줄 높이다. 그보다 길어지면 입력칸 안에서 스크롤된다.
+          className="max-h-32 min-h-11 w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-black/15 bg-transparent px-3 py-2.5 text-base dark:border-white/20"
         />
         <button
           type="submit"
