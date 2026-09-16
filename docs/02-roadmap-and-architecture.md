@@ -1,4 +1,4 @@
-# Personal AI — TypeScript 로드맵과 시스템 설계
+# ieum — TypeScript 로드맵과 시스템 설계
 
 버전: 0.1 · 작성일: 2026-09-15 · 상태: 구현 전 계획
 
