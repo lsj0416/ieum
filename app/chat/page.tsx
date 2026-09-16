@@ -1,42 +1,28 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Screen } from "@/app/ui/screen";
+import { cookies } from "next/headers";
 import { requireOwner } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/app/login/actions";
-import { latestConversationId, listMessages } from "@/src/server/conversation/queries";
-import { ChatView } from "./chat-view";
+import { conversationExists, latestConversationId } from "@/src/server/conversation/queries";
+import { ConversationScreen } from "./conversation-screen";
+import { LAST_CONVERSATION_COOKIE } from "./last-conversation-cookie";
 
 export const metadata: Metadata = {
   title: "대화 · ieum",
 };
 
 export default async function ChatPage() {
-  // proxy의 리다이렉트는 낙관적 검사일 뿐이다. 실제 판정은 여기서 한다.
   const owner = await requireOwner();
   const supabase = await createClient();
 
-  // 새로고침해도 이어지도록 저장된 대화를 서버에서 읽어 내려보낸다.
-  const conversationId = await latestConversationId(supabase, owner.id);
-  const messages = conversationId ? await listMessages(supabase, conversationId) : [];
+  // 마지막으로 열었던 대화를 복원한다. 쿠키 값은 사용자가 고칠 수 있으므로
+  // 소유권과 생존을 서버가 다시 확인한다. 유효하지 않으면 최근 대화로 간다.
+  const remembered = (await cookies()).get(LAST_CONVERSATION_COOKIE)?.value ?? null;
+  const restored =
+    remembered && (await conversationExists(supabase, owner.id, remembered)) ? remembered : null;
+
+  const conversationId = restored ?? (await latestConversationId(supabase, owner.id));
 
   return (
-    <Screen title="대화" wide>
-      <div className="flex items-center justify-between gap-2 pb-3">
-        <span className="truncate text-xs opacity-60">{owner.email}</span>
-        <div className="flex shrink-0 items-center gap-3">
-          <Link href="/memories" className="text-xs underline underline-offset-4 opacity-70">
-            기억함
-          </Link>
-        <form action={signOut}>
-          <button type="submit" className="shrink-0 text-xs underline underline-offset-4 opacity-70">
-            로그아웃
-          </button>
-        </form>
-        </div>
-      </div>
-
-      <ChatView initialMessages={messages} initialConversationId={conversationId} />
-    </Screen>
+    <ConversationScreen ownerEmail={owner.email} ownerId={owner.id} conversationId={conversationId} />
   );
 }

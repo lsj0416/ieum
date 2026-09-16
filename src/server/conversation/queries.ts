@@ -17,11 +17,64 @@ export type ChatMessage = {
   usedMemories?: { id: string; kind: string; content: string }[];
 };
 
+export type ConversationSummary = {
+  id: string;
+  title: string | null;
+  titleSource: "AUTO" | "USER";
+  updatedAt: string;
+};
+
+/**
+ * 보관하지 않은 대화 목록. 최근 갱신순.
+ */
+export async function listConversations(
+  supabase: SupabaseClient,
+  ownerId: string,
+): Promise<ConversationSummary[]> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, title, title_source, updated_at")
+    .eq("owner_id", ownerId)
+    .is("archived_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    title: (row.title as string | null) ?? null,
+    titleSource: row.title_source as "AUTO" | "USER",
+    updatedAt: row.updated_at as string,
+  }));
+}
+
+/**
+ * 이 대화가 내 것이고 살아 있는지 확인한다.
+ *
+ * 주소로 직접 들어오는 경로가 생겼으므로 소유권을 확인해야 한다. RLS가
+ * 이미 막지만, 없는 대화와 남의 대화를 같은 방식으로 다뤄 존재 여부가
+ * 새지 않게 한다.
+ */
+export async function conversationExists(
+  supabase: SupabaseClient,
+  ownerId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("owner_id", ownerId)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  return data !== null;
+}
+
 /**
  * 가장 최근에 갱신된 대화. 없으면 null.
  *
- * 지금은 한 번에 하나의 대화만 보여준다. 대화 목록과 전환은 여러 작업을
- * 다루는 S3에서 필요해진다. 그 전에 미리 만들지 않는다.
+ * 마지막으로 열어본 대화가 없거나 유효하지 않을 때의 기본값이다.
  */
 export async function latestConversationId(
   supabase: SupabaseClient,
@@ -31,6 +84,7 @@ export async function latestConversationId(
     .from("conversations")
     .select("id")
     .eq("owner_id", ownerId)
+    .is("archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();

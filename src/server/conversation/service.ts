@@ -155,14 +155,61 @@ export async function sendMessage(params: {
 }
 
 async function createConversation(supabase: SupabaseClient, ownerId: string, firstMessage: string) {
+  // 첫 메시지에서 제목을 만든다. 사용자가 이름을 바꾸면 title_source가
+  // USER가 되고, 그 뒤로는 자동 생성이 손대지 않는다.
   const title = firstMessage.slice(0, 40);
   const { data, error } = await supabase
     .from("conversations")
-    .insert({ owner_id: ownerId, title })
+    .insert({ owner_id: ownerId, title, title_source: "AUTO" })
     .select("id")
     .single();
   if (error) throw error;
   return data.id as string;
+}
+
+/**
+ * 대화 제목을 바꾼다.
+ *
+ * title_source를 USER로 올린다. 자동 생성이 이 값을 덮어쓰지 않는다는
+ * 표시다(05 4.1절).
+ */
+export async function renameConversation(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  conversationId: string;
+  title: string;
+}): Promise<boolean> {
+  const { supabase, ownerId, conversationId, title } = params;
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ title, title_source: "USER" })
+    .eq("id", conversationId)
+    .eq("owner_id", ownerId)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+/**
+ * 대화를 목록에서 감춘다. 원문은 지우지 않는다.
+ *
+ * 숨김과 삭제는 다르다. 05 4.1절이 둘을 구분하라고 하며, 삭제 기능은
+ * 이번 단계에서 만들지 않는다.
+ */
+export async function archiveConversation(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  conversationId: string;
+}): Promise<boolean> {
+  const { supabase, ownerId, conversationId } = params;
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("owner_id", ownerId)
+    .select("id");
+  if (error) throw error;
+  return (data ?? []).length > 0;
 }
 
 /**
