@@ -2,6 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ChatMessage = {
   id: string;
+  /**
+   * 대화 안의 순서. 구간을 주제에 연결할 때 쓴다.
+   *
+   * 화면에서 방금 만든 메시지에는 없다. 서버가 저장한 뒤에야 정해지는
+   * 값이므로 클라이언트가 지어내지 않는다.
+   */
+  seq?: number;
   role: "user" | "assistant" | "system";
   content: string;
   status: "pending" | "completed" | "failed" | "partial";
@@ -104,7 +111,7 @@ export async function listMessages(
 ): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, role, content, status")
+    .select("id, seq, role, content, status")
     .eq("conversation_id", conversationId)
     .order("seq", { ascending: true })
     .limit(200);
