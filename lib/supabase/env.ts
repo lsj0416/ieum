@@ -1,24 +1,28 @@
+import { ENV_RULES, checkEnvValue, type EnvRule } from "./env-rules";
+
 /**
  * 환경 변수 읽기와 검증.
  *
- * Java의 @ConfigurationProperties 검증과 같은 자리다. 값이 없거나 형식이
- * 틀리면 요청을 처리하다 이상한 곳에서 실패하는 대신 여기서 바로 끊는다.
+ * Java의 @ConfigurationProperties 검증과 같은 자리다. 규칙은
+ * env-rules.ts에 두고 빌드 시점 검증과 공유한다.
  *
  * process.env는 빌드 시 정적으로 치환되므로 `process.env[name]`처럼
  * 동적으로 접근하지 않고 각 변수를 그대로 적는다.
  */
+function rule(name: string): EnvRule {
+  const found = ENV_RULES.find((r) => r.name === name);
+  if (!found) throw new Error(`알 수 없는 환경 변수 규칙: ${name}`);
+  return found;
+}
 
-function required(name: string, value: string | undefined, prefix?: string): string {
-  if (!value) {
-    throw new Error(
-      `환경 변수 ${name}이(가) 없다. .env.local을 확인한다. 예제는 .env.example에 있다.`,
-    );
+function read(name: string, raw: string | undefined): string {
+  const reason = checkEnvValue(rule(name), raw);
+  if (reason) {
+    // 값 자체는 메시지에 넣지 않는다. 로그에 키가 남으면 안 된다.
+    throw new Error(`환경 변수 ${name}을(를) 확인해야 한다. ${reason}`);
   }
-  if (prefix && !value.startsWith(prefix)) {
-    // 값 자체는 오류 메시지에 넣지 않는다. 로그에 키가 남으면 안 된다.
-    throw new Error(`환경 변수 ${name}의 형식이 올바르지 않다. ${prefix}로 시작해야 한다.`);
-  }
-  return value;
+  // 붙여넣다 섞인 앞뒤 공백과 줄바꿈은 걷어낸다.
+  return raw!.trim();
 }
 
 /**
@@ -27,11 +31,10 @@ function required(name: string, value: string | undefined, prefix?: string): str
  */
 export function publicEnv() {
   return {
-    url: required("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL, "https://"),
-    publishableKey: required(
+    url: read("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
+    publishableKey: read(
       "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-      "sb_publishable_",
     ),
   };
 }
@@ -47,6 +50,6 @@ export function secretEnv() {
     throw new Error("secretEnv()를 브라우저에서 호출했다. 서버 코드에서만 사용한다.");
   }
   return {
-    secretKey: required("SUPABASE_SECRET_KEY", process.env.SUPABASE_SECRET_KEY, "sb_secret_"),
+    secretKey: read("SUPABASE_SECRET_KEY", process.env.SUPABASE_SECRET_KEY),
   };
 }
