@@ -3,6 +3,7 @@ import { generateStream } from "@/src/server/models/gateway";
 import { MAX_INPUT_TOKENS } from "@/src/server/models/catalog";
 import type { SendMessageInput } from "@/src/server/validation/chat";
 import { activeMemoriesForContext } from "@/src/server/memory/service";
+import { activeWorkForContext } from "@/src/server/work/service";
 import { SYSTEM_PROMPT, buildContext } from "./context";
 import { prepareTurn, type PreparedTurn } from "./service";
 
@@ -18,6 +19,8 @@ export type StreamEvent =
       conversationId: string;
       /** 이번 답변에 전달한 기억. 화면에서 확인할 수 있어야 한다(문서 6절). */
       usedMemories: { id: string; kind: string; content: string }[];
+      /** 이번 답변에 전달한 진행 중인 일. */
+      usedWork: { id: string; title: string }[];
     }
   | { type: "delta"; text: string }
   | { type: "done"; status: "completed" | "partial"; reason?: string }
@@ -67,9 +70,10 @@ export async function streamMessage(params: {
   }
 
   const { conversationId, answerId, recent } = prepared;
-  const { system, messages, usedMemories } = buildContext({
+  const { system, messages, usedMemories, usedWork } = buildContext({
     system: SYSTEM_PROMPT,
     memories: await activeMemoriesForContext({ supabase, ownerId }),
+    work: await activeWorkForContext({ supabase, ownerId }),
     recent,
     current: input.content,
     maxInputTokens: MAX_INPUT_TOKENS,
@@ -84,7 +88,14 @@ export async function streamMessage(params: {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(line({ type: "start", conversationId, usedMemories }));
+      controller.enqueue(
+        line({
+          type: "start",
+          conversationId,
+          usedMemories,
+          usedWork: usedWork.map((w) => ({ id: w.id, title: w.title })),
+        }),
+      );
 
       let buffered = "";
       // 토큰마다 DB를 쓰면 호출이 폭증한다. 일정 간격으로만 저장해

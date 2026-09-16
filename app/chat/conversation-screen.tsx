@@ -38,6 +38,9 @@ export async function ConversationScreen({
       <div className="flex items-center justify-between gap-2 pb-3">
         <span className="truncate text-xs opacity-60">{ownerEmail}</span>
         <div className="flex shrink-0 items-center gap-3">
+          <Link href="/work" className="text-xs underline underline-offset-4 opacity-70">
+            할 일
+          </Link>
           <Link href="/topics" className="text-xs underline underline-offset-4 opacity-70">
             주제
           </Link>
