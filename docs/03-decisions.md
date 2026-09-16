@@ -23,6 +23,8 @@
 | D13 | 확정 방향 | 서비스 이름을 `ieum`(이음)으로 확정 | 가칭 Personal AI 대신 저장소·문서·제품 이름을 하나로 통일 | 사용자가 이름을 다시 바꿈 |
 | D14 | 확정 방향 | 기능 구현은 브랜치+PR, 관련 문서 변경도 같은 PR에 포함 | 문서가 코드와 따로 머지되면 04의 완료 상태가 실제와 어긋남 | 혼자 작업하는 범위를 벗어남 |
 | D15 | 채택한 계획 | UI 스타일링은 Tailwind CSS v4 | 360px 모바일 레이아웃을 빠르게 잡고 Next 기본 구성을 따름 | 학습 부담이 크면 CSS Modules로 전환 |
+| D16 | 확정 방향 | Supabase 신형 키(`sb_publishable_`/`sb_secret_`) 사용 | legacy `anon`/`service_role`(eyJ…)은 2026년 말 지원 종료. secret 키는 브라우저에서 401로 차단되는 보호가 추가됨 | Supabase가 키 체계를 다시 바꿈 |
+| D17 | 채택한 계획 | 서버 클라이언트도 publishable 키 + 사용자 쿠키로 동작 | 서버라는 이유로 RLS를 우회하지 않는다. secret 키는 사용처가 생길 때만 꺼낸다 | RLS 우회가 실제로 필요한 관리 작업 발생 |
 
 ## 주요 결정의 상세 맥락
 
@@ -49,7 +51,7 @@
 | ID | 상태 | 기본 제안 | 결정 시점 |
 | --- | --- | --- | --- |
 | P01 | 채택 | Next.js 16.3.5 App Router, strict TypeScript, npm | S0-02에서 확정 |
-| P02 | 제안 | 본인 계정 allowlist + Supabase Auth | S0 인증 연결 |
+| P02 | 채택 | 이메일+비밀번호 로그인, Supabase 가입 차단 + 코드 allowlist 2중 | S0-04에서 확정, allowlist는 S0-05 |
 | P03 | 제안 | 첫 모델 1개, 초기 JSON 응답 검증 후 스트리밍 | S1 |
 | P04 | 제안 | 입력 6,000/출력 1,000 토큰에서 시작 | Provider 선택 및 한글 토큰 측정 |
 | P05 | 제안 | 고정 작업 Context 후 hybrid 검색 도입 | S3~S4 |
