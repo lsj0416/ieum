@@ -37,9 +37,11 @@ export async function generate(params: {
   supabase: SupabaseClient;
   ownerId: string;
   task: ModelTask;
+  /** 시스템 원칙. messages가 아니라 별도로 넘긴다. */
+  system?: string;
   messages: ModelMessage[];
 }): Promise<GenerateResult> {
-  const { supabase, ownerId, task, messages } = params;
+  const { supabase, ownerId, task, system, messages } = params;
   const spec = MODELS[task];
 
   // 예산을 넘었으면 호출하지 않는다. 기록할 사용량도 없다.
@@ -60,6 +62,7 @@ export async function generate(params: {
   try {
     const result = await generateText({
       model: openai(spec.id),
+      system,
       messages,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       abortSignal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
@@ -89,6 +92,9 @@ export async function generate(params: {
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
     const timedOut = error instanceof Error && error.name === "TimeoutError";
+
+    // 사용자에게는 감추되 서버 로그에는 남긴다. 원인을 모르면 고칠 수 없다.
+    console.error("모델 호출 실패:", error instanceof Error ? error.message : error);
 
     // 실패한 호출의 토큰 수는 공급자가 알려주지 않는다. 0으로 남기되
     // 기록 자체는 남겨 실패가 보이게 한다. 비용이 0이라는 뜻은 아니다.
