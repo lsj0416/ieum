@@ -5,6 +5,16 @@ export type StoredMessage = {
   content: string;
 };
 
+/** Context에 넣을 기억. 삭제되거나 닫힌 기억은 여기까지 오지 않는다. */
+export type ContextMemory = {
+  id: string;
+  kind: "FACT" | "PREFERENCE" | "GOAL" | "EPISODE";
+  content: string;
+};
+
+/** 기억에 쓸 수 있는 입력 예산의 비율. 나머지는 최근 대화 몫이다. */
+const MEMORY_BUDGET_RATIO = 0.4;
+
 /** 모델에 함께 보낼 최근 대화의 최대 개수. */
 const MAX_RECENT_MESSAGES = 20;
 
@@ -33,15 +43,34 @@ export function estimateTokens(text: string): number {
  */
 export function buildContext(params: {
   system: string;
+  memories: ContextMemory[];
   recent: StoredMessage[];
   current: string;
   maxInputTokens: number;
-}): { system: string; messages: ModelMessage[]; droppedCount: number } {
-  const { system, recent, current, maxInputTokens } = params;
+}): {
+  system: string;
+  messages: ModelMessage[];
+  droppedCount: number;
+  /** 실제로 모델에 전달한 기억. 화면에서 확인할 수 있어야 한다(문서 6절). */
+  usedMemories: ContextMemory[];
+} {
+  const { system, memories, recent, current, maxInputTokens } = params;
 
   // 시스템 원칙과 현재 질문은 먼저 예산에서 뺀다. 둘은 줄일 수 없다.
   const fixed = estimateTokens(system) + estimateTokens(current);
   let budget = maxInputTokens - fixed;
+
+  // 기억이 예산을 다 먹으면 최근 대화가 사라져 대화가 끊긴다. 몫을 나눈다.
+  // 기억이 적으면 남는 몫은 그대로 최근 대화가 쓴다.
+  const usedMemories: ContextMemory[] = [];
+  let memoryBudget = Math.floor(budget * MEMORY_BUDGET_RATIO);
+  for (const memory of memories) {
+    const cost = estimateTokens(memory.content) + 8; // 종류 표시와 줄바꿈 몫
+    if (cost > memoryBudget) break;
+    memoryBudget -= cost;
+    usedMemories.push(memory);
+    budget -= cost;
+  }
 
   const candidates = recent.slice(-MAX_RECENT_MESSAGES);
   const kept: StoredMessage[] = [];
@@ -55,13 +84,39 @@ export function buildContext(params: {
   }
 
   return {
-    system,
+    // 기억은 대화가 아니라 시스템 지시에 붙인다. 사용자 발화로 넣으면
+    // 모델이 "방금 사용자가 한 말"로 오해할 수 있다.
+    system: usedMemories.length > 0 ? `${system}\n\n${renderMemories(usedMemories)}` : system,
     messages: [
       ...kept.map((m) => ({ role: m.role, content: m.content }) as ModelMessage),
       { role: "user", content: current },
     ],
     droppedCount: recent.length - kept.length,
+    usedMemories,
   };
+}
+
+const KIND_LABEL: Record<ContextMemory["kind"], string> = {
+  FACT: "사실",
+  PREFERENCE: "선호",
+  GOAL: "목표",
+  EPISODE: "사건",
+};
+
+/**
+ * 기억을 시스템 지시에 붙일 형태로 만든다.
+ *
+ * 이 기억들이 확인된 것임을 밝히되, 여기 없는 것을 추측하지 말라고
+ * 함께 적는다. 목록을 주면 모델은 그 사이를 메우려 든다.
+ */
+function renderMemories(memories: ContextMemory[]): string {
+  const lines = memories.map((m) => `- [${KIND_LABEL[m.kind]}] ${m.content}`);
+  return [
+    "아래는 사용자가 직접 등록해 확인된 기억이다.",
+    ...lines,
+    "",
+    "여기 없는 개인 정보는 모른다고 말한다. 목록을 메우려고 추측하지 않는다.",
+  ].join("\n");
 }
 
 /**

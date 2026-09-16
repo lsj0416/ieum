@@ -250,3 +250,37 @@ export async function deleteMemory(params: {
 
   return { ok: true, id: memoryId, version: closed.data[0].version as number };
 }
+
+/**
+ * Context에 넣을 활성 기억.
+ *
+ * ACTIVE만 읽는다. SUPERSEDED(정정으로 닫힘)와 DELETED(사용자가 지움)는
+ * 여기까지 오지 않는다. 지운 사실이 다시 살아나면 삭제가 의미를 잃는다.
+ *
+ * 유효 기간이 지난 기억도 뺀다. '오늘만 짧게'가 영구 선호가 되지 않게
+ * 하는 장치이며, 지금은 valid_until을 쓰는 경로가 없지만 규칙은 여기 둔다.
+ */
+export async function activeMemoriesForContext(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  limit?: number;
+}): Promise<{ id: string; kind: MemoryWithEvidence["kind"]; content: string }[]> {
+  const { supabase, ownerId, limit = 50 } = params;
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("memories")
+    .select("id, kind, content")
+    .eq("owner_id", ownerId)
+    .eq("status", "ACTIVE")
+    .or(`valid_until.is.null,valid_until.gt.${now}`)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    kind: row.kind as MemoryWithEvidence["kind"],
+    content: row.content as string,
+  }));
+}
