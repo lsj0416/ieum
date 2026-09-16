@@ -4,6 +4,18 @@ import { MAX_INPUT_TOKENS } from "@/src/server/models/catalog";
 import type { SendMessageInput } from "@/src/server/validation/chat";
 import { SYSTEM_PROMPT, buildContext, type StoredMessage } from "./context";
 
+/**
+ * 모델을 부르기 직전까지의 준비 결과.
+ *
+ * 중복 확인, 메시지 저장, 답변 자리 예약, 최근 대화 읽기는 일반 호출과
+ * 스트리밍이 똑같이 해야 한다. 두 곳에 같은 코드를 두면 한쪽만 고치는
+ * 일이 생기므로 여기로 모은다.
+ */
+export type PreparedTurn =
+  | { kind: "ready"; conversationId: string; answerId: string; recent: StoredMessage[] }
+  | { kind: "replay"; conversationId: string; answer: string }
+  | { kind: "rejected"; code: "conflict" | "busy" | "not_found" | "retryable"; message: string };
+
 export type SendMessageResult =
   | { ok: true; conversationId: string; answer: string; status: "completed"; deduped: boolean }
   | { ok: true; conversationId: string; answer: null; status: "failed"; reason: string; deduped: false }
@@ -22,22 +34,22 @@ const UNIQUE_VIOLATION = "23505";
  * 외부 API를 기다리는 동안 DB 트랜잭션을 잡지 않는다. Supabase REST는
  * 호출마다 독립이라 애초에 하나의 트랜잭션으로 묶이지도 않는다.
  */
-export async function sendMessage(params: {
+export async function prepareTurn(params: {
   supabase: SupabaseClient;
   ownerId: string;
   input: SendMessageInput;
-}): Promise<SendMessageResult> {
+}): Promise<PreparedTurn> {
   const { supabase, ownerId, input } = params;
 
-  const conversationId = input.conversationId ?? (await createConversation(supabase, ownerId, input.content));
+  const conversationId =
+    input.conversationId ?? (await createConversation(supabase, ownerId, input.content));
   if (!conversationId) {
-    return { ok: false, code: "not_found", message: "대화를 찾을 수 없다." };
+    return { kind: "rejected", code: "not_found", message: "대화를 찾을 수 없다." };
   }
 
   // 같은 대화에 진행 중인 생성이 있으면 거절한다. 답변이 뒤섞이는 것을 막는다.
-  const pending = await findPending(supabase, conversationId);
-  if (pending) {
-    return { ok: false, code: "busy", message: "이 대화에 아직 진행 중인 답변이 있다." };
+  if (await findPending(supabase, conversationId)) {
+    return { kind: "rejected", code: "busy", message: "이 대화에 아직 진행 중인 답변이 있다." };
   }
 
   // 사용자 메시지를 저장한다. 유니크 인덱스가 중복을 막는다.
@@ -55,9 +67,7 @@ export async function sendMessage(params: {
 
   if (insert.error) {
     if (insert.error.code !== UNIQUE_VIOLATION) throw insert.error;
-
-    // 이미 처리한 요청이다. 같은 내용이면 저장된 답변을 그대로 돌려주고,
-    // 내용이 다르면 같은 ID를 재사용한 것이므로 거절한다.
+    // 이미 처리한 요청이다.
     return await handleDuplicate(supabase, conversationId, input);
   }
 
@@ -71,7 +81,36 @@ export async function sendMessage(params: {
   if (placeholder.error) throw placeholder.error;
   const answerId = placeholder.data.id as string;
 
-  const recent = await loadRecent(supabase, conversationId, answerId);
+  return {
+    kind: "ready",
+    conversationId,
+    answerId,
+    recent: await loadRecent(supabase, conversationId, answerId),
+  };
+}
+
+export async function sendMessage(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  input: SendMessageInput;
+}): Promise<SendMessageResult> {
+  const { supabase, ownerId, input } = params;
+
+  const prepared = await prepareTurn(params);
+  if (prepared.kind === "rejected") {
+    return { ok: false, code: prepared.code, message: prepared.message };
+  }
+  if (prepared.kind === "replay") {
+    return {
+      ok: true,
+      conversationId: prepared.conversationId,
+      answer: prepared.answer,
+      status: "completed",
+      deduped: true,
+    };
+  }
+  const { conversationId, answerId, recent } = prepared;
+
   const { system, messages } = buildContext({
     system: SYSTEM_PROMPT,
     recent,
@@ -124,15 +163,54 @@ async function createConversation(supabase: SupabaseClient, ownerId: string, fir
   return data.id as string;
 }
 
-async function findPending(supabase: SupabaseClient, conversationId: string) {
+/**
+ * 답변 생성이 이 시간을 넘기면 끊긴 것으로 본다.
+ *
+ * 모델 timeout(60초)보다 넉넉히 잡는다. 아직 살아 있는 생성을 죽은 것으로
+ * 판정하면 같은 대화에 답변이 두 개 생긴다.
+ */
+const PENDING_STALE_MS = 3 * 60 * 1000;
+
+/**
+ * 진행 중인 생성이 있는지 본다.
+ *
+ * 프로세스가 죽으면 pending 행이 그대로 남는다. 그것을 그대로 두면 그
+ * 대화에는 영영 메시지를 보낼 수 없다. 오래된 pending은 끊긴 것으로
+ * 판정해 정리하고 길을 터준다.
+ *
+ * 내용이 남아 있으면 partial, 없으면 failed다. 부분 답변을 지우지 않는
+ * 이유는 사용자가 무엇까지 받았는지 볼 수 있어야 하기 때문이다.
+ */
+async function findPending(supabase: SupabaseClient, conversationId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id")
+    .select("id, content, updated_at")
     .eq("conversation_id", conversationId)
     .eq("status", "pending")
-    .limit(1);
+    .order("seq", { ascending: true })
+    .limit(5);
   if (error) throw error;
-  return (data ?? []).length > 0;
+
+  const rows = data ?? [];
+  if (rows.length === 0) return false;
+
+  const now = Date.now();
+  let liveCount = 0;
+
+  for (const row of rows) {
+    const age = now - new Date(row.updated_at as string).getTime();
+    if (age < PENDING_STALE_MS) {
+      liveCount += 1;
+      continue;
+    }
+    const content = (row.content as string) ?? "";
+    await supabase
+      .from("messages")
+      .update({ status: content.length > 0 ? "partial" : "failed" })
+      .eq("id", row.id);
+  }
+
+  return liveCount > 0;
 }
 
 /**
@@ -146,7 +224,7 @@ async function handleDuplicate(
   supabase: SupabaseClient,
   conversationId: string,
   input: SendMessageInput,
-): Promise<SendMessageResult> {
+): Promise<PreparedTurn> {
   const { data, error } = await supabase
     .from("messages")
     .select("id, content, seq")
@@ -157,7 +235,7 @@ async function handleDuplicate(
 
   if (data.content !== input.content) {
     return {
-      ok: false,
+      kind: "rejected",
       code: "conflict",
       message: "같은 요청 ID로 다른 내용이 도착했다.",
     };
@@ -175,22 +253,20 @@ async function handleDuplicate(
   if (answer.error) throw answer.error;
 
   if (answer.data?.status === "completed") {
-    return {
-      ok: true,
-      conversationId,
-      answer: answer.data.content as string,
-      status: "completed",
-      deduped: true,
-    };
+    return { kind: "replay", conversationId, answer: answer.data.content as string };
   }
 
   // 답변이 실패로 끝난 요청이라면 같은 ID로 다시 시도할 수 있어야 한다.
   // 여기서 막으면 사용자는 실패한 대화를 복구할 방법이 없다.
-  if (answer.data?.status === "failed") {
-    return { ok: false, code: "retryable", message: "이전 답변이 실패했다. 다시 시도할 수 있다." };
+  if (answer.data?.status === "failed" || answer.data?.status === "partial") {
+    return {
+      kind: "rejected",
+      code: "retryable",
+      message: "이전 답변이 끝까지 오지 않았다. 다시 시도할 수 있다.",
+    };
   }
 
-  return { ok: false, code: "busy", message: "같은 요청을 아직 처리하는 중이다." };
+  return { kind: "rejected", code: "busy", message: "같은 요청을 아직 처리하는 중이다." };
 }
 
 async function loadRecent(
