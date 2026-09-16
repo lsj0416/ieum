@@ -6,6 +6,7 @@ import { listConversations, listMessages } from "@/src/server/conversation/queri
 import { ChatView } from "./chat-view";
 import { ConversationList } from "./conversation-list";
 import { RememberSelection } from "./remember-selection";
+import { LinkToTopic } from "./link-to-topic";
 
 /**
  * 대화 화면. /chat과 /chat/[id]가 같은 화면을 쓴다.
@@ -28,11 +29,18 @@ export async function ConversationScreen({
     conversationId ? listMessages(supabase, conversationId) : Promise.resolve([]),
   ]);
 
+  const saved = messages
+    .map((m) => m.seq)
+    .filter((seq): seq is number => typeof seq === "number");
+
   return (
     <Screen title="대화" wide>
       <div className="flex items-center justify-between gap-2 pb-3">
         <span className="truncate text-xs opacity-60">{ownerEmail}</span>
         <div className="flex shrink-0 items-center gap-3">
+          <Link href="/topics" className="text-xs underline underline-offset-4 opacity-70">
+            주제
+          </Link>
           <Link href="/memories" className="text-xs underline underline-offset-4 opacity-70">
             기억함
           </Link>
@@ -47,6 +55,15 @@ export async function ConversationScreen({
       <RememberSelection conversationId={conversationId} />
 
       <ConversationList conversations={conversations} currentId={conversationId} />
+
+      {/* 저장된 메시지에만 seq가 있다. 구간은 그 범위로 만든다. */}
+      {conversationId && saved.length > 0 ? (
+        <LinkToTopic
+          conversationId={conversationId}
+          startSeq={saved[0]}
+          endSeq={saved[saved.length - 1]}
+        />
+      ) : null}
 
       <ChatView
         // 대화를 바꾸면 화면 상태를 처음부터 다시 만든다. key가 없으면
