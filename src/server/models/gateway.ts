@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText, type ModelMessage } from "ai";
+import { generateText, streamText, type ModelMessage } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openaiEnv } from "@/lib/supabase/env";
 import {
@@ -148,4 +148,114 @@ async function record(
 
   // 기록 실패가 응답을 막지는 않는다. 다만 조용히 넘어가지도 않는다.
   if (error) console.error("model_calls 기록 실패:", error.message);
+}
+
+
+export type StreamResult =
+  | {
+      ok: true;
+      /** 토큰이 오는 대로 내보내는 스트림. */
+      textStream: AsyncIterable<string>;
+      /** 스트림이 끝난 뒤 호출한다. 사용량을 기록하고 최종 상태를 돌려준다. */
+      finish: () => Promise<{ text: string; complete: boolean }>;
+    }
+  | { ok: false; errorKind: "budget_exceeded" | "provider_error"; message: string };
+
+/**
+ * 스트리밍 호출.
+ *
+ * generate()와 다른 점은 답변을 기다리지 않고 토큰이 오는 대로 넘긴다는
+ * 것뿐이다. 예산 검사와 사용량 기록의 규칙은 같다.
+ *
+ * 사용량은 스트림이 끝나야 알 수 있으므로 finish()에서 기록한다. 호출자가
+ * finish()를 부르지 않으면 기록이 남지 않으니 반드시 부른다.
+ */
+export async function generateStream(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  task: ModelTask;
+  system?: string;
+  messages: ModelMessage[];
+}): Promise<StreamResult> {
+  const { supabase, ownerId, task, system, messages } = params;
+  const spec = MODELS[task];
+
+  const budget = await checkBudget(supabase, ownerId);
+  if (budget.exceeded) {
+    return {
+      ok: false,
+      errorKind: "budget_exceeded",
+      message: `이번 달 사용액이 상한에 도달했다. ($${budget.spentUsd.toFixed(2)} / $${budget.budgetUsd})`,
+    };
+  }
+
+  const openai = createOpenAI({ apiKey: openaiEnv().apiKey });
+  const startedAt = Date.now();
+
+  let result;
+  try {
+    result = streamText({
+      model: openai(spec.id),
+      system,
+      messages,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      abortSignal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
+    });
+  } catch (error) {
+    console.error("스트리밍 시작 실패:", error instanceof Error ? error.message : error);
+    return { ok: false, errorKind: "provider_error", message: "모델 호출에 실패했다." };
+  }
+
+  return {
+    ok: true,
+    textStream: result.textStream,
+    finish: async () => {
+      const latencyMs = Date.now() - startedAt;
+      try {
+        const [text, usageRaw, finishReason] = await Promise.all([
+          result.text,
+          result.usage,
+          result.finishReason,
+        ]);
+        const details = usageRaw.inputTokenDetails;
+        const usage: TokenUsage = {
+          freshInputTokens: details?.noCacheTokens ?? usageRaw.inputTokens ?? 0,
+          cacheReadTokens: details?.cacheReadTokens ?? 0,
+          cacheWriteTokens: details?.cacheWriteTokens ?? 0,
+          outputTokens: usageRaw.outputTokens ?? 0,
+        };
+
+        // stop이 아니면 답변이 온전하지 않다. length는 출력 상한에 걸린 것이고
+        // 그 밖의 값은 도중에 끊겼다는 뜻이다.
+        const complete = finishReason === "stop";
+
+        await record(supabase, {
+          ownerId,
+          task,
+          model: spec.id,
+          status: "completed",
+          usage,
+          costUsd: estimateCostUsd(task, usage),
+          latencyMs,
+          errorKind: complete ? undefined : `finish_reason:${finishReason}`,
+        });
+        return { text, complete };
+      } catch (error) {
+        // 스트림이 도중에 끊겼다. 여기까지 나간 토큰에도 과금되지만
+        // 공급자가 사용량을 주지 않으므로 0으로 남긴다. 기록 자체는 남긴다.
+        console.error("스트리밍 실패:", error instanceof Error ? error.message : error);
+        await record(supabase, {
+          ownerId,
+          task,
+          model: spec.id,
+          status: "failed",
+          usage: EMPTY_USAGE,
+          costUsd: 0,
+          latencyMs,
+          errorKind: "stream_error",
+        });
+        return { text: "", complete: false };
+      }
+    },
+  };
 }

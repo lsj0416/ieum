@@ -8,6 +8,8 @@ type PendingTurn = {
   clientRequestId: string;
   content: string;
   error: string | null;
+  /** 지금까지 받은 답변. 스트리밍 도중에도 화면에 보여준다. */
+  streamed: string;
 };
 
 export function ChatView({
@@ -31,34 +33,81 @@ export function ChatView({
 
   async function send(content: string, clientRequestId: string) {
     setSending(true);
-    setTurn({ clientRequestId, content, error: null });
+    setTurn({ clientRequestId, content, error: null, streamed: "" });
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content, clientRequestId, conversationId }),
       });
-      const body = await response.json();
 
-      if (!response.ok) {
-        setTurn({ clientRequestId, content, error: body.error ?? "요청을 처리하지 못했다." });
-        return;
-      }
-      if (body.status === "failed") {
-        // 사용자 입력은 이미 서버에 저장되어 있다. 다시 입력할 필요는 없다.
-        setTurn({ clientRequestId, content, error: body.reason ?? "답변을 받지 못했다." });
+      if (!response.body) {
+        setTurn({ clientRequestId, content, error: "응답을 읽을 수 없다.", streamed: "" });
         return;
       }
 
-      setConversationId(body.conversationId);
+      let answer = "";
+      let convId = conversationId;
+      let failed: string | null = null;
+      let finished: "completed" | "partial" | null = null;
+
+      // NDJSON을 줄 단위로 읽는다. 마지막 줄은 다음 chunk와 이어질 수
+      // 있으므로 개행이 올 때까지 버퍼에 둔다.
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const raw = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!raw) continue;
+
+          const event = JSON.parse(raw);
+          if (event.type === "start") {
+            convId = event.conversationId;
+          } else if (event.type === "delta") {
+            answer += event.text;
+            // 토큰이 올 때마다 화면을 갱신한다.
+            setTurn({ clientRequestId, content, error: null, streamed: answer });
+          } else if (event.type === "replay") {
+            convId = event.conversationId;
+            answer = event.answer;
+            finished = "completed";
+          } else if (event.type === "done") {
+            finished = event.status;
+          } else if (event.type === "error") {
+            failed = event.message;
+          }
+        }
+      }
+
+      if (failed !== null || finished === null) {
+        setTurn({ clientRequestId, content, error: failed ?? "답변을 받지 못했다.", streamed: answer });
+        return;
+      }
+
+      setConversationId(convId);
       setMessages((prev) => [
         ...prev,
         { id: `${clientRequestId}-user`, role: "user", content, status: "completed" },
-        { id: `${clientRequestId}-assistant`, role: "assistant", content: body.answer, status: "completed" },
+        {
+          id: `${clientRequestId}-assistant`,
+          role: "assistant",
+          content: answer,
+          // 끊긴 답변을 완료로 표시하지 않는다.
+          status: finished,
+        },
       ]);
       setTurn(null);
     } catch {
-      setTurn({ clientRequestId, content, error: "서버에 연결하지 못했다." });
+      setTurn({ clientRequestId, content, error: "서버에 연결하지 못했다.", streamed: "" });
     } finally {
       setSending(false);
     }
@@ -99,6 +148,12 @@ export function ChatView({
             <Bubble role="user" status="completed">
               {turn.content}
             </Bubble>
+            {turn.streamed.length > 0 ? (
+              <Bubble role="assistant" status="completed">
+                {turn.streamed}
+              </Bubble>
+            ) : null}
+
             {turn.error ? (
               <div
                 role="alert"
@@ -114,9 +169,9 @@ export function ChatView({
                   다시 시도
                 </button>
               </div>
-            ) : (
+            ) : turn.streamed.length === 0 ? (
               <p className="text-sm opacity-50">답변을 생성하는 중…</p>
-            )}
+            ) : null}
           </>
         ) : null}
 
@@ -163,15 +218,15 @@ function Bubble({
   const mine = role === "user";
 
   // 실패하거나 끊긴 답변을 정상 답변처럼 보여주지 않는다.
-  if (role === "assistant" && status !== "completed") {
-    return (
-      <p className="self-start text-sm opacity-60">
-        {status === "pending" ? "답변을 생성하다 중단되었다." : "답변을 받지 못했다."}
-      </p>
-    );
+  if (role === "assistant" && status === "failed") {
+    return <p className="self-start text-sm opacity-60">답변을 받지 못했다.</p>;
+  }
+  if (role === "assistant" && status === "pending") {
+    return <p className="self-start text-sm opacity-60">답변을 생성하다 중단되었다.</p>;
   }
 
   return (
+    <div className={mine ? "flex flex-col items-end" : "flex flex-col items-start"}>
     <div
       className={[
         "max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm",
@@ -181,6 +236,10 @@ function Bubble({
       ].join(" ")}
     >
       {children}
+    </div>
+    {role === "assistant" && status === "partial" ? (
+      <p className="pt-1 text-xs opacity-60">답변이 도중에 끊겼다.</p>
+    ) : null}
     </div>
   );
 }
