@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Screen } from "@/app/ui/screen";
 import { requireOwner } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -23,11 +24,16 @@ export default async function ChatPage() {
     <Screen title="대화" wide>
       <div className="flex items-center justify-between gap-2 pb-3">
         <span className="truncate text-xs opacity-60">{owner.email}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <Link href="/memories" className="text-xs underline underline-offset-4 opacity-70">
+            기억함
+          </Link>
         <form action={signOut}>
           <button type="submit" className="shrink-0 text-xs underline underline-offset-4 opacity-70">
             로그아웃
           </button>
         </form>
+        </div>
       </div>
 
       <ChatView initialMessages={messages} initialConversationId={conversationId} />
