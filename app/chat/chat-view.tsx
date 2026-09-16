@@ -245,8 +245,10 @@ function Bubble({
     <div className={mine ? "flex flex-col items-end" : "flex flex-col items-start"}>
     <div
       className={[
-        "max-w-[85%] break-words rounded-lg px-3 py-2 text-sm",
-        mine ? "whitespace-pre-wrap" : "",
+        // 답변은 넓은 화면에서도 한 줄이 너무 길어지지 않게 조인다.
+        // 한 줄이 길면 다음 줄 첫 글자를 찾기 어려워 읽기 나빠진다.
+        "break-words rounded-lg px-3 py-2 text-sm",
+        mine ? "max-w-[85%] whitespace-pre-wrap" : "w-full md:max-w-[46rem]",
         mine
           ? "self-end bg-foreground text-background"
           : "self-start border border-black/10 dark:border-white/15",
