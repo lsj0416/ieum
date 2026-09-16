@@ -37,6 +37,7 @@ Vercel에 배포합니다. 환경 변수 네 개를 Production과 Preview 양쪽
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | 브라우저 노출 |
 | `SUPABASE_SECRET_KEY` | 서버 전용 |
 | `OWNER_EMAILS` | 비우면 아무도 로그인하지 못합니다 |
+| `OPENAI_API_KEY` | 서버 전용. `sk-`로 시작 |
 
 Vercel에서 변수 타입을 고를 때 `NEXT_PUBLIC_`으로 시작하는 둘은 **Config**, `SUPABASE_SECRET_KEY`는 **Secret**으로 만듭니다. publishable 키는 어차피 브라우저 번들에 들어가므로 Secret으로 두면 Vercel이 경고합니다. 저장된 Secret은 Config로 바꿀 수 없으니, 잘못 만들었다면 지우고 다시 만들어야 합니다.
 
@@ -44,7 +45,13 @@ Vercel에서 변수 타입을 고를 때 `NEXT_PUBLIC_`으로 시작하는 둘�
 
 변수가 빠진 채로 빌드하면 빌드가 실패합니다(`next.config.ts`). 값 없이 빌드된 결과물이 배포되면 모든 요청이 `Internal Server Error` 한 줄만 내놓아 원인을 알 수 없기 때문입니다.
 
-비밀번호 로그인만 쓰므로 Supabase의 Redirect URL 설정은 필요하지 않습니다. 매직링크나 OAuth를 추가하면 그때 등록합니다.
+비밀번호 로그인만 쓰므로 Supabase의 Redirect URL 설정은 필요하지 않습니다.
+
+## 비용 통제
+
+모델 호출은 월 상한(`src/server/models/catalog.ts`의 `MONTHLY_BUDGET_USD`)을 넘으면 코드가 막습니다. **이것만 믿지 않습니다.** 코드에 버그가 있어 호출이 폭주하면 애플리케이션 검사로는 막지 못하므로, OpenAI 대시보드의 Settings > Billing > Limits에도 같은 금액의 한도를 겁니다. 그쪽이 진짜 안전장치입니다.
+
+호출마다 `model_calls`에 사용량과 호출 시점 단가로 계산한 비용이 남습니다. 실패한 호출도 기록합니다. 매직링크나 OAuth를 추가하면 그때 등록합니다.
 
 ## 문서
 

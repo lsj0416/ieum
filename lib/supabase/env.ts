@@ -46,10 +46,22 @@ export function publicEnv() {
  * 그때도 서버 코드에서만 부른다.
  */
 export function secretEnv() {
-  if (typeof window !== "undefined") {
-    throw new Error("secretEnv()를 브라우저에서 호출했다. 서버 코드에서만 사용한다.");
-  }
+  assertServerOnly("secretEnv");
   return {
     secretKey: read("SUPABASE_SECRET_KEY", process.env.SUPABASE_SECRET_KEY),
   };
+}
+
+/** OpenAI 키. 서버에서만 읽는다. */
+export function openaiEnv() {
+  assertServerOnly("openaiEnv");
+  return {
+    apiKey: read("OPENAI_API_KEY", process.env.OPENAI_API_KEY),
+  };
+}
+
+function assertServerOnly(fnName: string) {
+  if (typeof window !== "undefined") {
+    throw new Error(`${fnName}()를 브라우저에서 호출했다. 서버 코드에서만 사용한다.`);
+  }
 }
