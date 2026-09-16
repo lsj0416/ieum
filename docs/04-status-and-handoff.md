@@ -1,6 +1,6 @@
 # ieum — 현재 상태와 새 세션 인계
 
-최종 갱신: 2026-09-16 · 계획 버전: 0.1 · 현재 단계: S1 진행 중 (S1-01 완료)
+최종 갱신: 2026-09-16 · 계획 버전: 0.1 · 현재 단계: S1 진행 중 (S1-01~02 완료)
 
 ## 1. 가장 먼저 알아야 할 것
 
@@ -24,7 +24,8 @@
 | RLS 정책 | 완료 | `conversations`/`messages`에 적용. 임시 사용자 2명으로 실제 요청을 보내 검증(D20 해소) |
 | 대화 저장 스키마 | 완료 | `supabase/migrations/0001_conversations_messages.sql` 적용. 앱 코드에서 읽고 쓰는 경로는 아직 없다 |
 | Vercel 배포 | 완료 | https://ieum-theta.vercel.app · 휴대폰에서 로그인 성공. `/chat`·`/`는 비인증 시 307로 `/login` |
-| LLM 연동 | 미착수 | 공급자·모델·예산 미정 |
+| LLM 연동 | 완료 | OpenAI `gpt-5.6-terra`, 월 상한 $30. 실제 호출 성공과 사용량 기록 확인 |
+| 대화 API·UI | 미착수 | 화면에서 모델을 부르는 경로는 아직 없다 |
 | 테스트·실사용 | 미실행 | 자동화 테스트 없음. build/lint/dev 응답만 확인했고 품질·성능 수치는 없음 |
 
 문서 생성과 문서 형식 확인은 구현 테스트가 아니다. 현재 알려진 코드 오류가 없는 것은 앱이 없기 때문이며 정상 동작의 증거가 아니다.
@@ -111,5 +112,6 @@ S0~S3 먼저 실사용한다. 미래 기능의 상세 스키마를 지금 전부
 | 2026-09-16 | 빌드 검증에 형식 검사 추가 | 존재 여부만 보던 빌드 검증이 형식까지 보도록 고침. 규칙을 `lib/supabase/env-rules.ts`로 옮겨 빌드·실행이 같은 규칙을 쓴다 | 정상 env → 빌드 성공, legacy `eyJ` 키 → 빌드 실패와 원인 안내, 따옴표 감싼 값 → 빌드 실패. lint 통과 | 없음 | Vercel 값 수정 후 재배포 |
 | 2026-09-16 | S0-07 배포 완료 | Vercel 배포 https://ieum-theta.vercel.app. 원인은 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`에 legacy `eyJ` 키가 들어간 것이었다. Vercel은 저장된 Secret을 Config로 바꿀 수 없어 변수를 지우고 Config로 다시 만들었다 | 휴대폰에서 로그인 성공. 배포 URL 확인: `/login` 200, `/chat`·`/` 307 → `/login`, HTML에 `sb_secret_` 0건 | RLS 미적용(D20). 대화 저장·모델 호출 없음 | S1-01 |
 | 2026-09-16 | S1-01 스키마와 RLS | `conversations`/`messages` 생성, RLS 정책 8개, updated_at 트리거, 중복 방지 부분 유니크 인덱스 | `scripts/verify-rls.sh`로 임시 사용자 2명 실제 요청 검증 10건 전부 통과: 소유자 조회·삽입 허용, anon 조회 0건·삽입 401, 타인 조회 0건·삽입 403, `owner_id` 위조 생성 403. 검증 후 계정 삭제와 cascade 삭제로 잔여 행 0건 확인 | 앱 코드 연결 없음. 모델 Provider 미정 | S1-02 (Provider 결정 필요) |
+| 2026-09-16 | S1-02 모델 Provider 연결 | OpenAI `gpt-5.6-terra` 확정, AI SDK 7 게이트웨이, `model_calls` 기록, 월 $30 예산 검사 | 실제 호출 성공(응답 수신, fresh 21 / out 12 토큰, $0.000186, 2843ms)과 DB 기록 확인. 비용 계산을 손계산과 대조해 4건 일치. 예산 초과 상태 주입 후 재호출이 `budget_exceeded`로 차단됨. 임시 계정 삭제와 cascade로 잔여 행 0건 | 화면에서 부르는 경로 없음. 스트리밍 없음 | S1-03 대화 API |
 
 계획의 현재 기준은 이 네 문서다. 초기 Spring 문서는 필요할 때 대안을 참고하기 위한 기록으로 남긴다.

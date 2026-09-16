@@ -33,6 +33,11 @@ export const ENV_RULES: EnvRule[] = [
     name: "OWNER_EMAILS",
     hint: "로그인을 허용할 이메일을 쉼표로 구분해 적는다. 비우면 아무도 로그인하지 못한다.",
   },
+  {
+    name: "OPENAI_API_KEY",
+    prefix: "sk-",
+    hint: "sk-로 시작해야 한다. platform.openai.com의 API keys에서 발급한다.",
+  },
 ];
 
 /**
