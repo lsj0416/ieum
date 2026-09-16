@@ -1,11 +1,11 @@
-export default function Home() {
-  return (
-    <main className="flex flex-1 flex-col justify-center gap-2 p-6">
-      <h1 className="text-xl font-semibold">ieum</h1>
-      <p className="text-sm opacity-70">
-        함께한 시간을 기억하고, 다음 이야기를 이어가는 개인 AI 비서.
-      </p>
-      <p className="text-xs opacity-50">S0-02 · Next.js 골격</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+
+/**
+ * 첫 화면은 로그인이다.
+ *
+ * 인증을 붙이기 전이라 조건 없이 보낸다. S0-05에서 세션을 확인해
+ * 로그인한 사용자는 /chat으로 보내도록 바꾼다.
+ */
+export default function RootPage() {
+  redirect("/login");
 }
