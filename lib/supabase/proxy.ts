@@ -50,7 +50,14 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
 
-  if (!claims && !isPublicPath(request.nextUrl.pathname)) {
+  const pathname = request.nextUrl.pathname;
+  if (!claims && !isPublicPath(pathname)) {
+    // API는 화면이 아니므로 리다이렉트로 답하지 않는다. fetch가 리다이렉트를
+    // 따라가면 JSON 대신 로그인 페이지 HTML을 받게 되고, 호출한 쪽은
+    // 인증 실패를 파싱 오류로 오해한다.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "로그인이 필요하다." }, { status: 401 });
+    }
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     return NextResponse.redirect(redirectUrl);
