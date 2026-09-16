@@ -20,7 +20,7 @@ export default async function ChatPage() {
   const messages = conversationId ? await listMessages(supabase, conversationId) : [];
 
   return (
-    <Screen title="대화">
+    <Screen title="대화" wide>
       <div className="flex items-center justify-between gap-2 pb-3">
         <span className="truncate text-xs opacity-60">{owner.email}</span>
         <form action={signOut}>

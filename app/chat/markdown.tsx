@@ -39,11 +39,19 @@ export function Markdown({ children }: { children: string }) {
           // 표는 좁은 화면에서 반드시 넘친다. 표만 따로 스크롤시킨다.
           table: (props) => (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left" {...props} />
+              {/*
+                w-max + min-w-full: 칸이 내용에 맞는 폭을 갖게 하되 표가
+                좁으면 컨테이너를 채운다. w-full만 주면 긴 설명 칸이 공간을
+                다 가져가 "서울특별시"가 억지로 줄바꿈된다.
+              */}
+              <table className="w-max min-w-full border-collapse text-left" {...props} />
             </div>
           ),
           th: (props) => (
-            <th className="border-b border-current/20 px-2 py-1 font-semibold" {...props} />
+            <th
+              className="whitespace-nowrap border-b border-current/20 px-2 py-1 font-semibold"
+              {...props}
+            />
           ),
           td: (props) => <td className="border-b border-current/10 px-2 py-1" {...props} />,
           a: (props) => (
