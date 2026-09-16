@@ -5,6 +5,11 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   status: "pending" | "completed" | "failed" | "partial";
+  /**
+   * partial로 끝난 이유. 이번 요청에서 막 생긴 답변에만 있다.
+   * DB에는 저장하지 않는다. 다시 읽으면 "도중에 끊겼다"로만 보인다.
+   */
+  partialReason?: string;
 };
 
 /**

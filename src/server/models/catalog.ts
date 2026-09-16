@@ -27,15 +27,21 @@ export type ModelSpec = {
 /**
  * 2026-09-16 확인. platform.openai.com/docs/pricing 의 short context 기준.
  * 단가가 바뀌면 이 값과 확인 날짜를 함께 고친다.
+ *
+ * 개발·테스트 중에는 luna를 쓴다. terra의 10분의 1 가격이라 같은 예산으로
+ * 열 배 더 시험해볼 수 있다. 답변 품질을 실제로 비교한 뒤 정할 일이므로,
+ * 바꿀 때는 아래 id와 pricing을 함께 고친다.
+ *
+ * terra 단가(참고): 입력 $2.00 / 캐시 읽기 $0.20 / 캐시 쓰기 $2.50 / 출력 $12.00
  */
 export const MODELS: Record<ModelTask, ModelSpec> = {
   chat: {
-    id: "gpt-5.6-terra",
+    id: "gpt-5.6-luna",
     pricing: {
-      inputPerMillion: 2.0,
-      cacheReadPerMillion: 0.2,
-      cacheWritePerMillion: 2.5,
-      outputPerMillion: 12.0,
+      inputPerMillion: 0.2,
+      cacheReadPerMillion: 0.02,
+      cacheWritePerMillion: 0.25,
+      outputPerMillion: 1.2,
     },
     pricingCheckedOn: "2026-09-16",
   },
@@ -81,9 +87,28 @@ export function estimateCostUsd(task: ModelTask, usage: TokenUsage): number {
 /** 월 예산 상한(USD). 초과하면 호출을 막는다. */
 export const MONTHLY_BUDGET_USD = 30;
 
-/** 한 번의 호출이 기다릴 수 있는 최대 시간. */
-export const MODEL_TIMEOUT_MS = 60_000;
+/**
+ * 한 번의 호출이 기다릴 수 있는 최대 시간.
+ *
+ * 60초로 두었더니 긴 답변이 매번 중간에 잘렸다. 생성 속도가 초당 70자
+ * 남짓이라 네 문단만 넘어가도 걸린다.
+ *
+ * Vercel Hobby의 함수 실행 상한이 300초이므로 그보다 낮게 잡는다.
+ * 여기서 끊는 편이 플랫폼이 끊는 것보다 낫다. 우리가 끊으면 받은 데까지
+ * 저장하고 사용량을 남길 수 있다.
+ */
+export const MODEL_TIMEOUT_MS = 180_000;
 
-/** 초기 Context 예산. 문서 P04의 출발 제안값이다. */
+/** 초기 Context 예산. 문서 P04의 출발 제안값에서 조정했다. */
 export const MAX_INPUT_TOKENS = 6_000;
-export const MAX_OUTPUT_TOKENS = 1_000;
+
+/**
+ * 출력 상한.
+ *
+ * 처음에 1,000으로 두었더니 조금 긴 설명이 매번 잘려 "도중에 끊겼다"가
+ * 떴다. 한국어는 같은 내용에 영어보다 토큰을 더 쓴다.
+ *
+ * luna 기준 4,000토큰을 다 쓰면 한 턴 출력 비용이 $0.0048이다. 월 $30
+ * 상한에서 6,000턴이 넘고, 실제로는 대부분의 답변이 이보다 훨씬 짧다.
+ */
+export const MAX_OUTPUT_TOKENS = 4_000;
