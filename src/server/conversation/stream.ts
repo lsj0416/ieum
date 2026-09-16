@@ -14,7 +14,7 @@ import { prepareTurn, type PreparedTurn } from "./service";
 export type StreamEvent =
   | { type: "start"; conversationId: string }
   | { type: "delta"; text: string }
-  | { type: "done"; status: "completed" | "partial" }
+  | { type: "done"; status: "completed" | "partial"; reason?: string }
   | { type: "replay"; conversationId: string; answer: string }
   | { type: "error"; message: string; code?: string };
 
@@ -96,7 +96,7 @@ export async function streamMessage(params: {
           }
         }
 
-        const { text, complete } = await started.finish();
+        const { text, complete, reason } = await started.finish();
         const finalText = text.length > 0 ? text : buffered;
         const status = complete ? "completed" : "partial";
 
@@ -111,7 +111,7 @@ export async function streamMessage(params: {
           .update({ updated_at: new Date().toISOString() })
           .eq("id", conversationId);
 
-        controller.enqueue(line({ type: "done", status }));
+        controller.enqueue(line({ type: "done", status, reason: complete ? undefined : reason }));
       } catch (error) {
         console.error("스트리밍 중단:", error);
         // 받은 데까지는 남긴다. 실패를 완료로 표시하지 않는다.
@@ -122,7 +122,7 @@ export async function streamMessage(params: {
             status: buffered.length > 0 ? "partial" : "failed",
           })
           .eq("id", answerId);
-        await started.finish();
+        await started.finish(buffered);
         controller.enqueue(
           line({ type: "error", message: "답변이 도중에 끊겼다.", code: "stream_error" }),
         );

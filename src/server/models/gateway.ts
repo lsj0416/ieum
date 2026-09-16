@@ -157,7 +157,11 @@ export type StreamResult =
       /** 토큰이 오는 대로 내보내는 스트림. */
       textStream: AsyncIterable<string>;
       /** 스트림이 끝난 뒤 호출한다. 사용량을 기록하고 최종 상태를 돌려준다. */
-      finish: () => Promise<{ text: string; complete: boolean }>;
+      /**
+       * 스트림이 끝난 뒤 호출한다.
+       * 중간에 끊겼다면 받은 텍스트를 넘긴다. 사용량을 추정해 기록한다.
+       */
+      finish: (partialText?: string) => Promise<{ text: string; complete: boolean; reason: string }>;
     }
   | { ok: false; errorKind: "budget_exceeded" | "provider_error"; message: string };
 
@@ -209,7 +213,7 @@ export async function generateStream(params: {
   return {
     ok: true,
     textStream: result.textStream,
-    finish: async () => {
+    finish: async (partialText?: string) => {
       const latencyMs = Date.now() - startedAt;
       try {
         const [text, usageRaw, finishReason] = await Promise.all([
@@ -239,23 +243,37 @@ export async function generateStream(params: {
           latencyMs,
           errorKind: complete ? undefined : `finish_reason:${finishReason}`,
         });
-        return { text, complete };
+        return { text, complete, reason: String(finishReason) };
       } catch (error) {
-        // 스트림이 도중에 끊겼다. 여기까지 나간 토큰에도 과금되지만
-        // 공급자가 사용량을 주지 않으므로 0으로 남긴다. 기록 자체는 남긴다.
+        // 스트림이 도중에 끊겼다. 공급자가 사용량을 주지 않지만 여기까지
+        // 나간 토큰에도 과금된다. 0으로 남기면 예산이 실제보다 적게 보이므로
+        // 받은 텍스트에서 추정해 기록한다. 추정값임을 error_kind에 남긴다.
         console.error("스트리밍 실패:", error instanceof Error ? error.message : error);
+        const estimated = estimateOutputTokens(partialText ?? "");
+        const usage: TokenUsage = { ...EMPTY_USAGE, outputTokens: estimated };
         await record(supabase, {
           ownerId,
           task,
           model: spec.id,
           status: "failed",
-          usage: EMPTY_USAGE,
-          costUsd: 0,
+          usage,
+          costUsd: estimateCostUsd(task, usage),
           latencyMs,
-          errorKind: "stream_error",
+          errorKind: "stream_error:output_estimated",
         });
-        return { text: "", complete: false };
+        return { text: partialText ?? "", complete: false, reason: "stream_error" };
       }
     },
   };
+}
+
+
+/**
+ * 끊긴 스트림의 출력 토큰 수를 글자 수에서 추정한다.
+ *
+ * 한국어는 대략 1.5자가 1토큰이다. 정확하지 않지만 0보다는 실제에 가깝다.
+ * 예산은 적게 잡히는 쪽이 위험하다.
+ */
+function estimateOutputTokens(text: string): number {
+  return Math.ceil(text.length / 1.5);
 }

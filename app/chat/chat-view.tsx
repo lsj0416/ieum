@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/src/server/conversation/queries";
+import { Markdown } from "./markdown";
 
 /** 화면에만 존재하는 상태. 서버에 저장된 메시지와 구분한다. */
 type PendingTurn = {
@@ -51,6 +52,7 @@ export function ChatView({
       let convId = conversationId;
       let failed: string | null = null;
       let finished: "completed" | "partial" | null = null;
+      let finishReason: string | undefined;
 
       // NDJSON을 줄 단위로 읽는다. 마지막 줄은 다음 chunk와 이어질 수
       // 있으므로 개행이 올 때까지 버퍼에 둔다.
@@ -82,6 +84,7 @@ export function ChatView({
             finished = "completed";
           } else if (event.type === "done") {
             finished = event.status;
+            finishReason = event.reason;
           } else if (event.type === "error") {
             failed = event.message;
           }
@@ -103,6 +106,7 @@ export function ChatView({
           content: answer,
           // 끊긴 답변을 완료로 표시하지 않는다.
           status: finished,
+          partialReason: finishReason,
         },
       ]);
       setTurn(null);
@@ -138,7 +142,12 @@ export function ChatView({
         ) : null}
 
         {messages.map((message) => (
-          <Bubble key={message.id} role={message.role} status={message.status}>
+          <Bubble
+            key={message.id}
+            role={message.role}
+            status={message.status}
+            partialReason={message.partialReason}
+          >
             {message.content}
           </Bubble>
         ))}
@@ -183,6 +192,10 @@ export function ChatView({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
+            // 한글은 조합 중에도 keydown이 온다. 조합이 끝나기 전에 전송하면
+            // 마지막 글자가 입력창에 남는다. isComposing일 때는 흘려보낸다.
+            if (event.nativeEvent.isComposing) return;
+
             // Enter는 전송, Shift+Enter는 줄바꿈. 모바일에서는 줄바꿈이
             // 기본이라 이 처리는 물리 키보드에서만 의미가 있다.
             if (event.key === "Enter" && !event.shiftKey) {
@@ -209,10 +222,13 @@ export function ChatView({
 function Bubble({
   role,
   status,
+  partialReason,
   children,
 }: {
   role: ChatMessage["role"];
   status: ChatMessage["status"];
+  /** partial일 때 왜 멈췄는지. length면 출력 상한, 그 밖은 중단이다. */
+  partialReason?: string;
   children: React.ReactNode;
 }) {
   const mine = role === "user";
@@ -229,16 +245,21 @@ function Bubble({
     <div className={mine ? "flex flex-col items-end" : "flex flex-col items-start"}>
     <div
       className={[
-        "max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm",
+        "max-w-[85%] break-words rounded-lg px-3 py-2 text-sm",
+        mine ? "whitespace-pre-wrap" : "",
         mine
           ? "self-end bg-foreground text-background"
           : "self-start border border-black/10 dark:border-white/15",
       ].join(" ")}
     >
-      {children}
+      {mine ? children : <Markdown>{String(children)}</Markdown>}
     </div>
     {role === "assistant" && status === "partial" ? (
-      <p className="pt-1 text-xs opacity-60">답변이 도중에 끊겼다.</p>
+      <p className="pt-1 text-xs opacity-60">
+        {partialReason === "length"
+          ? "답변이 길이 상한에 걸려 여기서 멈췄다."
+          : "답변이 도중에 끊겼다."}
+      </p>
     ) : null}
     </div>
   );

@@ -18,7 +18,9 @@ export function Screen({
   return (
     // mx-auto + max-w-md: 큰 화면에서도 모바일 폭을 유지한다.
     // min-w-0: 아래 flex 자식이 내용 때문에 360px 밖으로 밀려나지 않게 한다.
-    <div className="mx-auto flex min-h-dvh w-full min-w-0 max-w-md flex-col">
+    // h-dvh + overflow-hidden: 화면 전체가 스크롤되면 하단 입력창이 같이
+    // 밀려 올라간다. 높이를 뷰포트에 고정해 안쪽 목록만 스크롤되게 한다.
+    <div className="mx-auto flex h-dvh w-full min-w-0 max-w-md flex-col overflow-hidden">
       <header className="shrink-0 border-b border-black/10 px-4 py-3 dark:border-white/15">
         <h1 className="truncate text-base font-semibold">{title}</h1>
       </header>

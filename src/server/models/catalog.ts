@@ -81,9 +81,28 @@ export function estimateCostUsd(task: ModelTask, usage: TokenUsage): number {
 /** 월 예산 상한(USD). 초과하면 호출을 막는다. */
 export const MONTHLY_BUDGET_USD = 30;
 
-/** 한 번의 호출이 기다릴 수 있는 최대 시간. */
-export const MODEL_TIMEOUT_MS = 60_000;
+/**
+ * 한 번의 호출이 기다릴 수 있는 최대 시간.
+ *
+ * 60초로 두었더니 긴 답변이 매번 중간에 잘렸다. 생성 속도가 초당 70자
+ * 남짓이라 네 문단만 넘어가도 걸린다.
+ *
+ * Vercel Hobby의 함수 실행 상한이 300초이므로 그보다 낮게 잡는다.
+ * 여기서 끊는 편이 플랫폼이 끊는 것보다 낫다. 우리가 끊으면 받은 데까지
+ * 저장하고 사용량을 남길 수 있다.
+ */
+export const MODEL_TIMEOUT_MS = 180_000;
 
-/** 초기 Context 예산. 문서 P04의 출발 제안값이다. */
+/** 초기 Context 예산. 문서 P04의 출발 제안값에서 조정했다. */
 export const MAX_INPUT_TOKENS = 6_000;
-export const MAX_OUTPUT_TOKENS = 1_000;
+
+/**
+ * 출력 상한.
+ *
+ * 처음에 1,000으로 두었더니 조금 긴 설명이 매번 잘려 "도중에 끊겼다"가
+ * 떴다. 한국어는 같은 내용에 영어보다 토큰을 더 쓴다.
+ *
+ * 4,000이면 최악의 경우 한 턴 출력 비용이 $0.048이다. 월 $30 상한에서
+ * 600턴 남짓이고, 실제로는 대부분의 답변이 이보다 훨씬 짧다.
+ */
+export const MAX_OUTPUT_TOKENS = 4_000;
