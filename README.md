@@ -10,7 +10,18 @@
 
 Next.js · TypeScript · Supabase · Vercel · AI SDK
 
-현재는 **계획 문서 단계**입니다. 앱 코드·DB·배포·모델 연동은 아직 없습니다.
+현재 단계는 **S0 배포 기반**입니다. Next.js 골격까지 만들었고 DB·배포·모델 연동은 아직 없습니다.
+
+## 개발
+
+```bash
+npm install
+npm run dev     # http://localhost:3000
+npm run build   # production build
+npm run lint
+```
+
+Node 24 · Next.js 16 (App Router) · Tailwind CSS v4
 
 ## 문서
 
