@@ -48,3 +48,30 @@ export function parseCreateMemory(body: unknown): ValidationResult<CreateMemoryI
     value: { kind: kind as MemoryKind, content, quote, sourceMessageId: sourceMessageId ?? null },
   };
 }
+
+export type ReviseMemoryInput = {
+  kind: MemoryKind;
+  content: string;
+  quote: string;
+  /** 고치려는 쪽이 본 버전. 지금 버전과 다르면 거절한다. */
+  expectedVersion: number;
+};
+
+export function parseReviseMemory(body: unknown): ValidationResult<ReviseMemoryInput> {
+  const base = parseCreateMemory({ ...(body as object), sourceMessageId: null });
+  if (!base.ok) return base;
+
+  const raw = body as Record<string, unknown>;
+  const expectedVersion = raw.expectedVersion;
+  if (typeof expectedVersion !== "number" || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return { ok: false, message: "expectedVersion이 올바르지 않다." };
+  }
+
+  const { kind, content, quote } = base.value;
+  return { ok: true, value: { kind, content, quote, expectedVersion } };
+}
+
+export function parseDeleteMode(raw: string | null): ValidationResult<"forget" | "with_source"> {
+  if (raw === "forget" || raw === "with_source") return { ok: true, value: raw };
+  return { ok: false, message: "삭제 방식이 올바르지 않다." };
+}

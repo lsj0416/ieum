@@ -20,6 +20,8 @@ export type MemoryStatus = "ACTIVE" | "SUPERSEDED" | "DELETED";
 
 export type Memory = {
   id: string;
+  /** 낙관적 잠금용. 고칠 때 이 값을 함께 보낸다. */
+  version: number;
   kind: MemoryKind;
   content: string;
   source: "USER" | "MODEL";
