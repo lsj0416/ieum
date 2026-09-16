@@ -23,6 +23,25 @@ npm run lint
 
 Node 24 · Next.js 16 (App Router) · Tailwind CSS v4
 
+처음 받았다면 `.env.example`을 `.env.local`로 복사해 값을 채웁니다. 값은 Supabase 대시보드의 Settings > API Keys에 있습니다.
+
+## 배포
+
+Vercel에 배포합니다. 환경 변수 네 개를 Production과 Preview 양쪽에 등록해야 합니다.
+
+| 변수 | 비고 |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | 브라우저 노출 |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | 브라우저 노출 |
+| `SUPABASE_SECRET_KEY` | 서버 전용 |
+| `OWNER_EMAILS` | 비우면 아무도 로그인하지 못합니다 |
+
+`NEXT_PUBLIC_` 변수는 **빌드 시점에 코드에 박힙니다.** 배포 후에 변수를 추가했다면 반드시 빌드 캐시를 끄고 Redeploy해야 합니다. 변수만 등록하고 재배포하지 않으면 이전 빌드 결과물이 그대로 서빙되어 계속 실패합니다.
+
+변수가 빠진 채로 빌드하면 빌드가 실패합니다(`next.config.ts`). 값 없이 빌드된 결과물이 배포되면 모든 요청이 `Internal Server Error` 한 줄만 내놓아 원인을 알 수 없기 때문입니다.
+
+비밀번호 로그인만 쓰므로 Supabase의 Redirect URL 설정은 필요하지 않습니다. 매직링크나 OAuth를 추가하면 그때 등록합니다.
+
 ## 문서
 
 - [프로젝트 방향](docs/01-project-direction.md)
