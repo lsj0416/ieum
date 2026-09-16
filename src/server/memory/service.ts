@@ -67,7 +67,7 @@ export async function listMemories(params: {
   let query = supabase
     .from("memories")
     .select(
-      "id, kind, content, source, status, supersedes_id, valid_from, valid_until, updated_at, " +
+      "id, kind, content, source, status, supersedes_id, valid_from, valid_until, updated_at, version, " +
         "memory_evidence (id, quote, source_kind, source_message_id)",
     )
     .eq("owner_id", ownerId)
@@ -85,6 +85,7 @@ export async function listMemories(params: {
 
   return rows.map((row) => ({
     id: row.id as string,
+    version: row.version as number,
     kind: row.kind as MemoryWithEvidence["kind"],
     content: row.content as string,
     source: row.source as MemoryWithEvidence["source"],
@@ -100,4 +101,152 @@ export async function listMemories(params: {
       sourceMessageId: (e.source_message_id as string | null) ?? null,
     })),
   }));
+}
+
+export type UpdateResult =
+  | { ok: true; id: string; version: number }
+  | { ok: false; code: "conflict" | "not_found" | "gone"; message: string };
+
+/**
+ * 기억을 정정한다.
+ *
+ * 값을 덮어쓰지 않는다. 이전 버전을 SUPERSEDED로 닫고 새 행을 만들어
+ * supersedes_id로 잇는다. 과거 질문에 답할 때 "그때는 무엇이 사실이었는지"를
+ * 볼 수 있어야 하기 때문이다.
+ *
+ * 고치려는 쪽이 본 버전과 지금 버전이 다르면 거절한다. 그 사이에 다른
+ * 곳에서 고쳤다는 뜻이고, 그대로 진행하면 남의 수정이 조용히 사라진다.
+ */
+export async function reviseMemory(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  memoryId: string;
+  expectedVersion: number;
+  content: string;
+  kind: MemoryWithEvidence["kind"];
+  quote: string;
+}): Promise<UpdateResult> {
+  const { supabase, ownerId, memoryId, expectedVersion, content, kind, quote } = params;
+
+  const current = await supabase
+    .from("memories")
+    .select("id, version, status")
+    .eq("id", memoryId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+  if (current.error) throw current.error;
+  if (!current.data) {
+    return { ok: false, code: "not_found", message: "기억을 찾을 수 없다." };
+  }
+  if (current.data.status !== "ACTIVE") {
+    return { ok: false, code: "gone", message: "이미 닫히거나 지워진 기억이다." };
+  }
+  if (current.data.version !== expectedVersion) {
+    return {
+      ok: false,
+      code: "conflict",
+      message: "다른 곳에서 먼저 수정했다. 최신 내용을 확인한 뒤 다시 고친다.",
+    };
+  }
+
+  // 새 버전을 먼저 만든다. 이전 버전을 먼저 닫으면, 새 행 생성이 실패했을 때
+  // 활성 기억이 하나도 없는 상태가 남는다.
+  const created = await supabase
+    .from("memories")
+    .insert({
+      owner_id: ownerId,
+      kind,
+      content,
+      source: "USER",
+      supersedes_id: memoryId,
+    })
+    .select("id, version")
+    .single();
+  if (created.error) throw created.error;
+
+  const evidence = await supabase.from("memory_evidence").insert({
+    memory_id: created.data.id,
+    quote,
+    source_kind: "MANUAL",
+  });
+  if (evidence.error) {
+    await supabase.from("memories").delete().eq("id", created.data.id);
+    throw evidence.error;
+  }
+
+  // 여기서 버전을 다시 확인한다. 위 검사와 이 사이에 누가 고쳤다면
+  // 조건에 걸려 0건이 갱신되고, 그때는 새로 만든 행을 되돌린다.
+  const closed = await supabase
+    .from("memories")
+    .update({ status: "SUPERSEDED" })
+    .eq("id", memoryId)
+    .eq("version", expectedVersion)
+    .select("id");
+  if (closed.error) throw closed.error;
+
+  if ((closed.data ?? []).length === 0) {
+    await supabase.from("memories").delete().eq("id", created.data.id);
+    return {
+      ok: false,
+      code: "conflict",
+      message: "다른 곳에서 먼저 수정했다. 최신 내용을 확인한 뒤 다시 고친다.",
+    };
+  }
+
+  return { ok: true, id: created.data.id as string, version: created.data.version as number };
+}
+
+/**
+ * 기억을 지운다.
+ *
+ * 두 가지를 구분한다. 문서 7절이 요구하는 구분이다.
+ *
+ * forget: 기억만 닫는다. 출처가 된 대화는 그대로 두므로, 모델이 최근
+ *   대화를 읽다가 같은 이야기를 다시 할 수 있다.
+ *
+ * with_source: 출처 메시지를 Context에서도 제외한다. 대화 기록에는 남지만
+ *   모델에게 더는 전달되지 않는다. 지운 사실이 다시 살아나지 않게 하려면
+ *   이쪽이어야 한다.
+ */
+export async function deleteMemory(params: {
+  supabase: SupabaseClient;
+  ownerId: string;
+  memoryId: string;
+  mode: "forget" | "with_source";
+}): Promise<UpdateResult> {
+  const { supabase, ownerId, memoryId, mode } = params;
+
+  const closed = await supabase
+    .from("memories")
+    .update({ status: "DELETED" })
+    .eq("id", memoryId)
+    .eq("owner_id", ownerId)
+    .select("id, version");
+  if (closed.error) throw closed.error;
+  if ((closed.data ?? []).length === 0) {
+    return { ok: false, code: "not_found", message: "기억을 찾을 수 없다." };
+  }
+
+  if (mode === "with_source") {
+    const evidence = await supabase
+      .from("memory_evidence")
+      .select("source_message_id")
+      .eq("memory_id", memoryId);
+    if (evidence.error) throw evidence.error;
+
+    const messageIds = (evidence.data ?? [])
+      .map((e) => e.source_message_id as string | null)
+      .filter((id): id is string => id !== null);
+
+    if (messageIds.length > 0) {
+      const excluded = await supabase
+        .from("messages")
+        .update({ excluded_from_context: true })
+        .in("id", messageIds);
+      // 기억은 이미 닫혔다. 제외 표시 실패를 성공으로 알리지 않는다.
+      if (excluded.error) throw excluded.error;
+    }
+  }
+
+  return { ok: true, id: memoryId, version: closed.data[0].version as number };
 }
