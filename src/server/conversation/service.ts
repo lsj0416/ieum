@@ -3,6 +3,7 @@ import { generate } from "@/src/server/models/gateway";
 import { MAX_INPUT_TOKENS } from "@/src/server/models/catalog";
 import type { SendMessageInput } from "@/src/server/validation/chat";
 import { activeMemoriesForContext } from "@/src/server/memory/service";
+import { activeWorkForContext } from "@/src/server/work/service";
 import { SYSTEM_PROMPT, buildContext, type StoredMessage } from "./context";
 
 /**
@@ -115,6 +116,7 @@ export async function sendMessage(params: {
   const { system, messages } = buildContext({
     system: SYSTEM_PROMPT,
     memories: await activeMemoriesForContext({ supabase, ownerId }),
+    work: await activeWorkForContext({ supabase, ownerId }),
     recent,
     current: input.content,
     maxInputTokens: MAX_INPUT_TOKENS,
