@@ -1,10 +1,10 @@
 # ieum — 프로젝트 방향
 
-문서 버전: 0.1 · 작성일: 2026-09-15 · 구현 상태: 미착수
+문서 버전: 0.1 · 작성일: 2026-09-15 · 최종 갱신: 2026-09-16 · 구현 상태: S0~S2 완료, 배포 운영 중
 
 ## 읽는 순서와 문서 역할
 
-새 세션에서는 `04-status-and-handoff.md`를 먼저 읽고, 이 문서 → `03-decisions.md` → `02-roadmap-and-architecture.md` 순으로 확인한다.
+새 세션에서는 `04-status-and-handoff.md`를 먼저 읽고, 이 문서 → `03-decisions.md` → `02-roadmap-and-architecture.md` 순으로 확인한다. S3 이후 작업은 `05-conversations-topics-and-map.md`가 상세 설계를 갖는다.
 
 | 문서 | 기준이 되는 정보 |
 | --- | --- |
@@ -12,6 +12,7 @@
 | 02-roadmap-and-architecture.md | 단계별 범위, 구조, 데이터, 개발 Task |
 | 03-decisions.md | 선택 이유, 확정/제안/보류 구분 |
 | 04-status-and-handoff.md | 실제 완료 상태, 다음 작업, 인계 지침 |
+| 05-conversations-topics-and-map.md | S3 이후 대화·주제·지도 확장 설계 |
 
 이번 문서는 현재 대화에서 합의한 내용을 보존하는 TypeScript 실사용 버전의 계획이다. 이전 `docs/archive/personal-ai-mvp-design.md`는 Spring 기반 초기 대안으로 보존한다. 이전 문서의 스택·작업 번호·기간을 이번 버전의 현재 계획으로 적용하지 않는다. 새 코드 저장소가 생기면 네 문서를 함께 옮겨 버전 관리한다.
 
