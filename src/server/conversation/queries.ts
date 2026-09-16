@@ -10,6 +10,11 @@ export type ChatMessage = {
    * DB에는 저장하지 않는다. 다시 읽으면 "도중에 끊겼다"로만 보인다.
    */
   partialReason?: string;
+  /**
+   * 이번 답변에 전달한 기억. 막 생긴 답변에만 있다.
+   * DB에는 저장하지 않으므로 새로고침하면 사라진다.
+   */
+  usedMemories?: { id: string; kind: string; content: string }[];
 };
 
 /**

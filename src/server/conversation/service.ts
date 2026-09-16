@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generate } from "@/src/server/models/gateway";
 import { MAX_INPUT_TOKENS } from "@/src/server/models/catalog";
 import type { SendMessageInput } from "@/src/server/validation/chat";
+import { activeMemoriesForContext } from "@/src/server/memory/service";
 import { SYSTEM_PROMPT, buildContext, type StoredMessage } from "./context";
 
 /**
@@ -113,6 +114,7 @@ export async function sendMessage(params: {
 
   const { system, messages } = buildContext({
     system: SYSTEM_PROMPT,
+    memories: await activeMemoriesForContext({ supabase, ownerId }),
     recent,
     current: input.content,
     maxInputTokens: MAX_INPUT_TOKENS,
@@ -279,6 +281,9 @@ async function loadRecent(
     .select("role, content, status")
     .eq("conversation_id", conversationId)
     .eq("status", "completed")
+    // 삭제된 기억의 출처는 모델에게 전달하지 않는다. 그대로 두면 모델이
+    // 그 대화를 읽고 지운 사실을 다시 말한다.
+    .eq("excluded_from_context", false)
     .neq("id", excludeId)
     .order("seq", { ascending: true })
     .limit(40);

@@ -1,16 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/src/server/conversation/queries";
 import { Markdown } from "./markdown";
 
 /** 화면에만 존재하는 상태. 서버에 저장된 메시지와 구분한다. */
+type UsedMemory = { id: string; kind: string; content: string };
+
 type PendingTurn = {
   clientRequestId: string;
   content: string;
   error: string | null;
   /** 지금까지 받은 답변. 스트리밍 도중에도 화면에 보여준다. */
   streamed: string;
+  /** 이번 답변에 전달한 기억. 무엇을 보고 답했는지 확인할 수 있어야 한다. */
+  usedMemories: UsedMemory[];
+};
+
+const KIND_LABEL: Record<string, string> = {
+  FACT: "사실",
+  PREFERENCE: "선호",
+  GOAL: "목표",
+  EPISODE: "사건",
 };
 
 export function ChatView({
@@ -49,7 +60,7 @@ export function ChatView({
 
   async function send(content: string, clientRequestId: string) {
     setSending(true);
-    setTurn({ clientRequestId, content, error: null, streamed: "" });
+    setTurn({ clientRequestId, content, error: null, streamed: "", usedMemories: [] });
 
     try {
       const response = await fetch("/api/chat", {
@@ -59,7 +70,7 @@ export function ChatView({
       });
 
       if (!response.body) {
-        setTurn({ clientRequestId, content, error: "응답을 읽을 수 없다.", streamed: "" });
+        setTurn({ clientRequestId, content, error: "응답을 읽을 수 없다.", streamed: "", usedMemories: [] });
         return;
       }
 
@@ -68,6 +79,7 @@ export function ChatView({
       let failed: string | null = null;
       let finished: "completed" | "partial" | null = null;
       let finishReason: string | undefined;
+      let used: UsedMemory[] = [];
 
       // NDJSON을 줄 단위로 읽는다. 마지막 줄은 다음 chunk와 이어질 수
       // 있으므로 개행이 올 때까지 버퍼에 둔다.
@@ -89,10 +101,11 @@ export function ChatView({
           const event = JSON.parse(raw);
           if (event.type === "start") {
             convId = event.conversationId;
+            used = event.usedMemories ?? [];
           } else if (event.type === "delta") {
             answer += event.text;
             // 토큰이 올 때마다 화면을 갱신한다.
-            setTurn({ clientRequestId, content, error: null, streamed: answer });
+            setTurn({ clientRequestId, content, error: null, streamed: answer, usedMemories: used });
           } else if (event.type === "replay") {
             convId = event.conversationId;
             answer = event.answer;
@@ -107,7 +120,7 @@ export function ChatView({
       }
 
       if (failed !== null || finished === null) {
-        setTurn({ clientRequestId, content, error: failed ?? "답변을 받지 못했다.", streamed: answer });
+        setTurn({ clientRequestId, content, error: failed ?? "답변을 받지 못했다.", streamed: answer, usedMemories: used });
         return;
       }
 
@@ -119,6 +132,7 @@ export function ChatView({
           id: `${clientRequestId}-assistant`,
           role: "assistant",
           content: answer,
+          usedMemories: used,
           // 끊긴 답변을 완료로 표시하지 않는다.
           status: finished,
           partialReason: finishReason,
@@ -126,7 +140,7 @@ export function ChatView({
       ]);
       setTurn(null);
     } catch {
-      setTurn({ clientRequestId, content, error: "서버에 연결하지 못했다.", streamed: "" });
+      setTurn({ clientRequestId, content, error: "서버에 연결하지 못했다.", streamed: "", usedMemories: [] });
     } finally {
       setSending(false);
     }
@@ -157,14 +171,16 @@ export function ChatView({
         ) : null}
 
         {messages.map((message) => (
-          <Bubble
-            key={message.id}
-            role={message.role}
-            status={message.status}
-            partialReason={message.partialReason}
-          >
-            {message.content}
-          </Bubble>
+          <Fragment key={message.id}>
+            <Bubble
+              role={message.role}
+              status={message.status}
+              partialReason={message.partialReason}
+            >
+              {message.content}
+            </Bubble>
+            {message.usedMemories ? <UsedMemoryNote memories={message.usedMemories} /> : null}
+          </Fragment>
         ))}
 
         {turn ? (
@@ -173,9 +189,12 @@ export function ChatView({
               {turn.content}
             </Bubble>
             {turn.streamed.length > 0 ? (
-              <Bubble role="assistant" status="completed">
-                {turn.streamed}
-              </Bubble>
+              <>
+                <Bubble role="assistant" status="completed">
+                  {turn.streamed}
+                </Bubble>
+                <UsedMemoryNote memories={turn.usedMemories} />
+              </>
             ) : null}
 
             {turn.error ? (
@@ -281,5 +300,30 @@ function Bubble({
       </p>
     ) : null}
     </div>
+  );
+}
+
+/**
+ * 이번 답변에 전달한 기억을 접어서 보여준다.
+ *
+ * 문서 6절이 요구하는 것이다. 모델이 무엇을 보고 답했는지 확인할 수 없으면
+ * 답이 기억에서 나온 것인지 지어낸 것인지 구분할 수 없다.
+ *
+ * 전달했다는 것과 실제로 인용했다는 것은 다르다. 그래서 "참고로 전달함"이라고
+ * 적는다.
+ */
+function UsedMemoryNote({ memories }: { memories: UsedMemory[] }) {
+  if (memories.length === 0) return null;
+  return (
+    <details className="self-start pl-1 text-xs opacity-60">
+      <summary className="cursor-pointer">참고로 전달한 기억 {memories.length}개</summary>
+      <ul className="flex flex-col gap-1 pt-1">
+        {memories.map((m) => (
+          <li key={m.id} className="border-l-2 border-current/20 pl-2">
+            [{KIND_LABEL[m.kind] ?? m.kind}] {m.content}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

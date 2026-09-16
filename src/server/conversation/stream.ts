@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateStream } from "@/src/server/models/gateway";
 import { MAX_INPUT_TOKENS } from "@/src/server/models/catalog";
 import type { SendMessageInput } from "@/src/server/validation/chat";
+import { activeMemoriesForContext } from "@/src/server/memory/service";
 import { SYSTEM_PROMPT, buildContext } from "./context";
 import { prepareTurn, type PreparedTurn } from "./service";
 
@@ -12,7 +13,12 @@ import { prepareTurn, type PreparedTurn } from "./service";
  * 읽을 때 EventSource의 제약(GET만 가능, 헤더 못 붙임)도 피할 수 있다.
  */
 export type StreamEvent =
-  | { type: "start"; conversationId: string }
+  | {
+      type: "start";
+      conversationId: string;
+      /** 이번 답변에 전달한 기억. 화면에서 확인할 수 있어야 한다(문서 6절). */
+      usedMemories: { id: string; kind: string; content: string }[];
+    }
   | { type: "delta"; text: string }
   | { type: "done"; status: "completed" | "partial"; reason?: string }
   | { type: "replay"; conversationId: string; answer: string }
@@ -61,8 +67,9 @@ export async function streamMessage(params: {
   }
 
   const { conversationId, answerId, recent } = prepared;
-  const { system, messages } = buildContext({
+  const { system, messages, usedMemories } = buildContext({
     system: SYSTEM_PROMPT,
+    memories: await activeMemoriesForContext({ supabase, ownerId }),
     recent,
     current: input.content,
     maxInputTokens: MAX_INPUT_TOKENS,
@@ -77,7 +84,7 @@ export async function streamMessage(params: {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(line({ type: "start", conversationId }));
+      controller.enqueue(line({ type: "start", conversationId, usedMemories }));
 
       let buffered = "";
       // 토큰마다 DB를 쓰면 호출이 폭증한다. 일정 간격으로만 저장해
