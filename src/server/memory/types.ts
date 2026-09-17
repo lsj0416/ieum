@@ -30,12 +30,15 @@ export type Memory = {
   validFrom: string;
   validUntil: string | null;
   updatedAt: string;
+  /** 외부에서 가져온 기억이면 그 가져오기의 id. 직접 등록한 것은 null. */
+  originImportId: string | null;
 };
 
 export type MemoryEvidence = {
   id: string;
   quote: string;
-  sourceKind: "CHAT" | "MANUAL";
+  /** CHAT: 대화 중 저장 · MANUAL: 직접 입력 · IMPORT: 외부에서 가져옴 */
+  sourceKind: "CHAT" | "MANUAL" | "IMPORT";
   sourceMessageId: string | null;
 };
 

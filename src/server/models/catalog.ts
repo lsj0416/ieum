@@ -7,7 +7,7 @@
  */
 
 /** 모델을 부르는 용도. 새 작업이 생기면 여기에 추가한다. */
-export type ModelTask = "chat";
+export type ModelTask = "chat" | "import_extract";
 
 export type ModelPricing = {
   /** 1M 토큰당 USD. 캐시 읽기·쓰기는 일반 입력과 단가가 다르다. */
@@ -36,6 +36,20 @@ export type ModelSpec = {
  */
 export const MODELS: Record<ModelTask, ModelSpec> = {
   chat: {
+    id: "gpt-5.6-luna",
+    pricing: {
+      inputPerMillion: 0.2,
+      cacheReadPerMillion: 0.02,
+      cacheWritePerMillion: 0.25,
+      outputPerMillion: 1.2,
+    },
+    pricingCheckedOn: "2026-09-16",
+  },
+
+  // 붙여넣은 글에서 기억 후보를 뽑는다. 대화와 같은 모델을 쓰되 작업을
+  // 나눠 둔다. model_calls에서 무엇이 얼마를 썼는지 구분되고, 나중에 추출만
+  // 다른 모델로 바꿀 때 호출부를 고치지 않아도 된다.
+  import_extract: {
     id: "gpt-5.6-luna",
     pricing: {
       inputPerMillion: 0.2,

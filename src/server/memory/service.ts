@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CreateMemoryInput } from "@/src/server/validation/memory";
+import type { ContextMemory } from "@/src/server/conversation/context";
 import type { MemoryWithEvidence } from "./types";
 
 /**
@@ -68,7 +69,7 @@ export async function listMemories(params: {
     .from("memories")
     .select(
       "id, kind, content, source, status, supersedes_id, valid_from, valid_until, updated_at, version, " +
-        "memory_evidence (id, quote, source_kind, source_message_id)",
+        "origin_import_id, memory_evidence (id, quote, source_kind, source_message_id)",
     )
     .eq("owner_id", ownerId)
     .order("updated_at", { ascending: false })
@@ -94,10 +95,11 @@ export async function listMemories(params: {
     validFrom: row.valid_from as string,
     validUntil: (row.valid_until as string | null) ?? null,
     updatedAt: row.updated_at as string,
+    originImportId: (row.origin_import_id as string | null) ?? null,
     evidence: ((row.memory_evidence ?? []) as Record<string, unknown>[]).map((e) => ({
       id: e.id as string,
       quote: e.quote as string,
-      sourceKind: e.source_kind as "CHAT" | "MANUAL",
+      sourceKind: e.source_kind as MemoryWithEvidence["evidence"][number]["sourceKind"],
       sourceMessageId: (e.source_message_id as string | null) ?? null,
     })),
   }));
@@ -264,13 +266,15 @@ export async function activeMemoriesForContext(params: {
   supabase: SupabaseClient;
   ownerId: string;
   limit?: number;
-}): Promise<{ id: string; kind: MemoryWithEvidence["kind"]; content: string }[]> {
+}): Promise<ContextMemory[]> {
   const { supabase, ownerId, limit = 50 } = params;
   const now = new Date().toISOString();
 
+  // 가져온 기억은 출처와 가져온 날짜를 함께 읽는다. 그 정보 없이 전달하면
+  // 모델이 과거의 정리를 현재 사실처럼 말한다(06 8절).
   const { data, error } = await supabase
     .from("memories")
-    .select("id, kind, content")
+    .select("id, kind, content, source, memory_imports (source_label, imported_at)")
     .eq("owner_id", ownerId)
     .eq("status", "ACTIVE")
     .or(`valid_until.is.null,valid_until.gt.${now}`)
@@ -278,9 +282,24 @@ export async function activeMemoriesForContext(params: {
     .limit(limit);
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    kind: row.kind as MemoryWithEvidence["kind"],
-    content: row.content as string,
-  }));
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+
+  return rows.map((row) => {
+    // 중첩 select는 관계에 따라 객체나 배열로 온다. 둘 다 받는다.
+    const raw = row.memory_imports as
+      | { source_label: string; imported_at: string }
+      | { source_label: string; imported_at: string }[]
+      | null;
+    const origin = Array.isArray(raw) ? (raw[0] ?? null) : raw;
+
+    return {
+      id: row.id as string,
+      kind: row.kind as MemoryWithEvidence["kind"],
+      content: row.content as string,
+      source: row.source as "USER" | "MODEL",
+      origin: origin
+        ? { sourceLabel: origin.source_label, importedAt: origin.imported_at }
+        : null,
+    };
+  });
 }
