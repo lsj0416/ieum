@@ -64,7 +64,7 @@ export async function generate(params: {
       model: openai(spec.id),
       system,
       messages,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      maxOutputTokens: spec.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
       abortSignal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
     });
 
@@ -202,7 +202,7 @@ export async function generateStream(params: {
       model: openai(spec.id),
       system,
       messages,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      maxOutputTokens: spec.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
       abortSignal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
     });
   } catch (error) {

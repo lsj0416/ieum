@@ -50,6 +50,7 @@ export default async function ImportPage() {
                         ? `검토할 후보 ${item.pendingCount}개`
                         : "검토 끝"}
                       {item.acceptedCount > 0 ? ` · 기억이 된 것 ${item.acceptedCount}개` : ""}
+                      {item.truncated ? " · 일부만 뽑힘" : ""}
                     </span>
                   </Link>
                 </li>

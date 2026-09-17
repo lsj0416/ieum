@@ -108,9 +108,19 @@ try {
   check("원문에 없는 근거는 확인 표시가 없다", true,
     detail.candidates.filter((c) => !norm(RAW).includes(norm(c.quote))).every((c) => !c.quoteVerified));
 
+  check("정상 추출은 잘리지 않는다", false, body.truncated);
+
+  // 모델이 민감한 줄을 후보로 올릴지 말지는 회차마다 다르다. 올리지
+  // 않는 것도 옳은 동작이므로 "반드시 후보가 있다"로 보면 안 된다.
+  // 불변식은 "올라왔다면 반드시 표시된다"이다.
   const sensitive = detail.candidates.filter((c) => c.sensitive);
-  check("민감 정보 후보를 표시한다", true, sensitive.length > 0,
-    sensitive.map((c) => c.content.slice(0, 24)).join(" / "));
+  const leaked = detail.candidates.filter(
+    (c) => c.content.includes("900101") || c.quote.includes("900101") || /비밀번호/.test(c.content),
+  );
+  check("민감 정보가 올라오면 반드시 표시된다", true, leaked.every((c) => c.sensitive),
+    `민감 표시 ${sensitive.length}건 / 민감 내용 ${leaked.length}건`);
+  // 기본 선택에서 빼는 것은 화면의 판단이라 여기서 보이지 않는다.
+  // 브라우저에서 체크가 꺼져 있는지 직접 확인한다.
 
   console.log(`  (참고) 후보 ${detail.candidates.length}건 · 버린 것 ${body.droppedCount}건 · 근거 미확인 ${body.unverifiedCount}건 · 민감 ${body.sensitiveCount}건`);
 
@@ -237,6 +247,7 @@ try {
     (start?.usedMemories ?? []).every((m) => typeof m.origin?.importedAt === "string"));
   check("제외한 후보는 전달되지 않는다", false,
     (start?.usedMemories ?? []).some((m) => m.content.includes("900101")));
+
 } finally {
   await admin("DELETE", `/auth/v1/admin/users/${owner.id}`);
   await admin("DELETE", `/auth/v1/admin/users/${other.id}`);

@@ -45,6 +45,7 @@ const EXTRACT_SYSTEM = [
   "규칙:",
   "- 원문에 없는 내용을 만들지 않는다. 빈칸을 메우려고 추측하지 않는다.",
   "- quote는 반드시 원문에 있는 글자 그대로여야 한다. 요약하거나 다듬지 않는다.",
+  "- quote는 150자를 넘기지 않는다. 근거가 되는 대목만 잘라 쓴다.",
   "- 시점이 적혀 있으면 content에도 남긴다. 과거의 목표를 현재의 목표로 바꾸지 않는다.",
   "- 확실하지 않으면 AI_INFERENCE로 표시한다.",
   `- 최대 ${MAX_CANDIDATES}개까지만 뽑는다.`,
@@ -100,6 +101,8 @@ export type RunImportResult =
       /** 근거가 원문에서 확인되지 않은 후보 수. */
       unverifiedCount: number;
       sensitiveCount: number;
+      /** 모델 답변이 상한에 걸려 잘렸는가. 일부만 뽑혔다는 뜻이다. */
+      truncated: boolean;
     }
   | { ok: false; code: "model_failed" | "unreadable"; message: string };
 
@@ -144,6 +147,10 @@ export async function runImport(params: {
   if (!parsed.ok) {
     return { ok: false, code: "unreadable", message: parsed.message };
   }
+  if (parsed.truncated) {
+    // 조용히 넘기지 않는다. 사용자가 "이게 전부"라고 오해하면 안 된다.
+    console.warn("가져오기 추출이 출력 상한에서 잘렸다. 살린 후보:", parsed.value.length);
+  }
 
   const created = await supabase
     .from("memory_imports")
@@ -152,6 +159,7 @@ export async function runImport(params: {
       source_label: input.sourceLabel,
       raw_text: input.rawText,
       model: MODELS.import_extract.id,
+      truncated: parsed.truncated,
     })
     .select("id")
     .single();
@@ -191,6 +199,7 @@ export async function runImport(params: {
     droppedCount: dropped,
     unverifiedCount: rows.filter((r) => !r.quote_verified).length,
     sensitiveCount: rows.filter((r) => r.sensitive).length,
+    truncated: parsed.truncated,
   };
 }
 
@@ -203,7 +212,7 @@ export async function listImports(params: {
 
   const { data, error } = await supabase
     .from("memory_imports")
-    .select("id, source_label, imported_at, status, model, memory_candidates (status)")
+    .select("id, source_label, imported_at, status, model, truncated, memory_candidates (status)")
     .eq("owner_id", ownerId)
     .order("imported_at", { ascending: false })
     .limit(50);
@@ -218,6 +227,7 @@ export async function listImports(params: {
       importedAt: row.imported_at as string,
       status: row.status as MemoryImport["status"],
       model: (row.model as string | null) ?? null,
+      truncated: (row.truncated as boolean | null) ?? false,
       pendingCount: candidates.filter((c) => c.status === "PENDING").length,
       acceptedCount: candidates.filter((c) => c.status === "ACCEPTED").length,
     };
@@ -235,7 +245,7 @@ export async function getImport(params: {
   const { data, error } = await supabase
     .from("memory_imports")
     .select(
-      "id, source_label, raw_text, imported_at, status, model, " +
+      "id, source_label, raw_text, imported_at, status, model, truncated, " +
         "memory_candidates (id, kind, content, attribution, quote, quote_verified, sensitive, status, memory_id)",
     )
     .eq("id", importId)
@@ -271,6 +281,7 @@ export async function getImport(params: {
     importedAt: row.imported_at as string,
     status: row.status as MemoryImport["status"],
     model: (row.model as string | null) ?? null,
+    truncated: (row.truncated as boolean | null) ?? false,
     candidates,
   };
 }

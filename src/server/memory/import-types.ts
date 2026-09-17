@@ -40,6 +40,13 @@ export type MemoryImport = {
   importedAt: string;
   status: "PENDING" | "REVIEWED";
   model: string | null;
+  /**
+   * 모델 답변이 출력 상한에 걸려 잘렸는가.
+   *
+   * 잘린 답변에서도 온전한 항목까지는 살린다. 그러나 살렸다는 사실을
+   * 알리지 않으면 사용자는 그것이 전부인 줄 안다.
+   */
+  truncated: boolean;
   /** 원문. 후보의 근거를 눈으로 대조할 때 쓴다. */
   rawText: string;
 };

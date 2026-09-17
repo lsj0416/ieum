@@ -39,6 +39,15 @@ export default async function ImportReviewPage({
           </Link>
         </div>
 
+        {/* 잘린 추출을 조용히 넘기지 않는다. 이게 전부라고 오해하면
+            빠진 내용을 다시 가져올 생각을 못 한다. */}
+        {data.truncated ? (
+          <p className="rounded-md border border-amber-600/40 p-3 text-xs text-amber-700 dark:text-amber-400">
+            원문이 길어 모델 답변이 중간에 잘렸다. 온전하게 뽑힌 후보까지만 아래에 있고, 뒷부분은
+            빠졌을 수 있다. 빠진 내용이 있으면 원문을 나눠서 다시 가져온다.
+          </p>
+        ) : null}
+
         <CandidateReview data={data} />
 
         {/* 근거를 대조할 수 있게 원문을 남겨둔다. 접어두는 것은 길어서다. */}
