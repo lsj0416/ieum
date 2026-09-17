@@ -22,6 +22,14 @@ export type ModelSpec = {
   pricing: ModelPricing;
   /** 이 시각 기준의 단가다. 공급자 단가는 바뀌므로 확인 날짜를 남긴다. */
   pricingCheckedOn: string;
+  /**
+   * 이 작업의 출력 상한. 없으면 MAX_OUTPUT_TOKENS를 쓴다.
+   *
+   * 작업마다 필요한 길이가 다르다. 대화 답변은 사람이 읽을 분량이면
+   * 되지만, 추출은 항목 수만큼 길어진다. 대화용 상한을 추출에 그대로
+   * 쓰면 긴 글에서 답변이 중간에 잘린다.
+   */
+  maxOutputTokens?: number;
 };
 
 /**
@@ -58,6 +66,14 @@ export const MODELS: Record<ModelTask, ModelSpec> = {
       outputPerMillion: 1.2,
     },
     pricingCheckedOn: "2026-09-16",
+
+    // 4,000으로는 모자랐다. 실사용에서 입력 7,034토큰짜리 글을 넣었더니
+    // 출력이 정확히 4,000에서 잘렸다(2026-09-18). 후보 50개에 근거까지
+    // 붙으면 그 정도로는 담기지 않는다.
+    //
+    // luna 기준 12,000토큰을 다 써도 한 번에 $0.014다. 가져오기는 자주
+    // 하는 일이 아니므로 이 정도는 감당한다.
+    maxOutputTokens: Number(process.env.IMPORT_MAX_OUTPUT_TOKENS) || 12_000,
   },
 };
 

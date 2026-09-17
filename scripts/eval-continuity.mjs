@@ -1,4 +1,4 @@
-// S3-03 연속성 평가. 문서 02의 12절 E01~E10을 실제로 돌린다.
+// S3-03 연속성 평가. 문서 02의 12절 E01~E10과 S4-0에서 추가한 E11~E13을 돌린다.
 //
 // 이 평가는 앞선 검증 스크립트와 성격이 다르다. 서버가 무엇을 전달했는지가
 // 아니라 모델이 실제로 어떻게 답했는지를 본다. 그래서 결과가 흔들릴 수
@@ -163,8 +163,78 @@ try {
     e09.answer,
     /확인|오래|이후|기준|지금도|최근|업데이트/.test(e09.answer) ? "통과" : "확인필요");
 
+  // ── E11 · 가져온 기억으로 배경을 묻는다 ──────────────────────────────
+  //
+  // 실사용에서 여기가 무너졌다(2026-09-18). 가져온 기억만 있는 상태에서
+  // "내가 지금 뭐 하는지 알아?"라고 물었더니 "과거 정보뿐이고 현재도
+  // 그런지는 확인되지 않았습니다"만 답했다. Context 문구가 너무 세서
+  // 모델이 아는 것까지 모른다고 말한 것이다.
+  //
+  // 기대는 "단정하지 않되 아는 것은 말한다"이다. 모르는 척이 안전한
+  // 답은 아니다.
+  const imp = (await admin("POST", "/rest/v1/memory_imports", {
+    owner_id: owner.id, source_label: "ChatGPT", raw_text: "평가용 원문",
+  }))[0];
+  const impMemory = async (kind, content, source = "USER") => {
+    const m = (await admin("POST", "/rest/v1/memories", {
+      owner_id: owner.id, kind, content, source, origin_import_id: imp.id,
+    }))[0];
+    await admin("POST", "/rest/v1/memory_evidence", {
+      memory_id: m.id, quote: content, source_kind: "IMPORT",
+    });
+    return m;
+  };
+  await impMemory("FACT", "정보보안공학과를 졸업했고 ROTC 통신장교로 28개월 복무했다");
+  await impMemory("GOAL", "Java/Spring Boot 백엔드 개발자로 취업하는 것이 주된 커리어 목표다");
+  await impMemory("PREFERENCE", "이력서에서 실제 역할보다 크게 보이도록 표현하는 것을 피한다");
+  await impMemory("FACT", "대규모 트래픽 처리 경험이 부족한 것으로 보인다", "MODEL");
+
+  const e11 = await ask("나에 대해 아는 걸 말해줘.");
+  // 아는 것을 실제로 꺼내 쓰는지 본다. 하나도 못 대면 실패다.
+  const usedKnown = /백엔드|Spring|Java|정보보안|통신장교|ROTC|이력서/.test(e11.answer);
+  const refusedOnly = /알 수 없|모르겠|확인되지 않/.test(e11.answer) && !usedKnown;
+  record("E11", "가져온 기억만 있을 때 배경을 물음", "아는 것을 말한다. 모른다고만 하지 않는다",
+    e11.answer, refusedOnly ? "실패" : usedKnown ? "통과" : "확인필요",
+    `전달 기억 ${e11.start?.usedMemories.length ?? 0}개`);
+
+  // ── E12 · 가져온 목표의 시점 ────────────────────────────────────────────
+  //
+  // 목표는 바뀔 수 있다. 그렇다고 말을 못 하면 안 되고, 지금 목표라고
+  // 단정해도 안 된다. 언제 기준인지 밝히는 것이 기대다(06 8절).
+  const e12 = await ask("내 커리어 목표가 뭐지?");
+  const saidGoal = /백엔드|Spring|Java/.test(e12.answer);
+  const saidWhen = /기준|가져온|정리|확인|당시|시점|지금도|바뀌|최근/.test(e12.answer);
+  record("E12", "가져온 목표를 물음", "목표를 말하되 언제 기준인지 밝힌다",
+    e12.answer,
+    saidGoal && saidWhen ? "통과" : saidGoal ? "확인필요" : "실패",
+    saidGoal ? (saidWhen ? "" : "시점 표시 없음") : "목표를 말하지 못함");
+
+  // ── E13 · 방금 등록한 일을 묻는다 ──────────────────────────────────────
+  //
+  // 실사용에서 방금 등록한 일에 대고 "이 정보가 지금도 최신인지는 확인하지
+  // 못했다"고 답했다(2026-09-18). 가져온 기억에 붙인 주의가 진행 중인
+  // 일까지 물든 것이다.
+  //
+  // 오래된 상태를 단정하지 않는 것(E09)과 최근 상태를 의심하는 것은 다르다.
+  // 확인 시점 단서가 붙지 않은 일은 최근에 확인된 것이다.
+  const fresh = (await admin("POST", "/rest/v1/work_items", {
+    owner_id: owner.id, title: "ieum S4 개발", status: "ACTIVE",
+    next_action: "S4-A 대화에서 기억 자동 추출",
+  }))[0];
+  // E09에서 오래된 것으로 만들어 둔 일들은 치워 방금 등록한 일만 남긴다.
+  await admin("PATCH", `/rest/v1/work_items?owner_id=eq.${owner.id}&id=neq.${fresh.id}`, { status: "DONE" });
+
+  const e13 = await ask("나 지금 뭐 하고 있지?");
+  const saidWork = /S4|자동 추출|ieum/.test(e13.answer);
+  const wronglyStale = /오래|최신인지|확인하지 못|확인되지 않/.test(e13.answer);
+  record("E13", "방금 등록한 일을 물음", "저장된 일을 말하고 오래됐다고 하지 않는다",
+    e13.answer,
+    saidWork && !wronglyStale ? "통과" : saidWork ? "실패" : "확인필요",
+    wronglyStale ? "최근 상태를 오래된 것처럼 말함" : "");
+
   // ── E10 ────────────────────────────────────────────────────────────────
   // 예산 초과를 주입해 모델 호출을 실패시킨다. 같은 요청 ID로 재시도한다.
+  // 이 뒤로는 모든 호출이 차단되므로 모델 답을 보는 평가는 여기 앞에 둔다.
   await admin("POST", "/rest/v1/model_calls", {
     owner_id: owner.id, task: "chat", model: "gpt-5.6-luna", status: "completed", estimated_cost_usd: 99,
   });

@@ -108,9 +108,19 @@ try {
   check("원문에 없는 근거는 확인 표시가 없다", true,
     detail.candidates.filter((c) => !norm(RAW).includes(norm(c.quote))).every((c) => !c.quoteVerified));
 
+  check("정상 추출은 잘리지 않는다", false, body.truncated);
+
+  // 모델이 민감한 줄을 후보로 올릴지 말지는 회차마다 다르다. 올리지
+  // 않는 것도 옳은 동작이므로 "반드시 후보가 있다"로 보면 안 된다.
+  // 불변식은 "올라왔다면 반드시 표시된다"이다.
   const sensitive = detail.candidates.filter((c) => c.sensitive);
-  check("민감 정보 후보를 표시한다", true, sensitive.length > 0,
-    sensitive.map((c) => c.content.slice(0, 24)).join(" / "));
+  const leaked = detail.candidates.filter(
+    (c) => c.content.includes("900101") || c.quote.includes("900101") || /비밀번호/.test(c.content),
+  );
+  check("민감 정보가 올라오면 반드시 표시된다", true, leaked.every((c) => c.sensitive),
+    `민감 표시 ${sensitive.length}건 / 민감 내용 ${leaked.length}건`);
+  // 기본 선택에서 빼는 것은 화면의 판단이라 여기서 보이지 않는다.
+  // 브라우저에서 체크가 꺼져 있는지 직접 확인한다.
 
   console.log(`  (참고) 후보 ${detail.candidates.length}건 · 버린 것 ${body.droppedCount}건 · 근거 미확인 ${body.unverifiedCount}건 · 민감 ${body.sensitiveCount}건`);
 
@@ -237,6 +247,58 @@ try {
     (start?.usedMemories ?? []).every((m) => typeof m.origin?.importedAt === "string"));
   check("제외한 후보는 전달되지 않는다", false,
     (start?.usedMemories ?? []).some((m) => m.content.includes("900101")));
+
+  console.log("\n== 되돌리기와 다시 뽑기 ==");
+  const del = (id) => fetch(`${APP}/api/imports/${id}/memories`, { method: "DELETE", headers: { cookie } });
+  const redo = (id) => fetch(`${APP}/api/imports/${id}/reextract`, { method: "POST", headers: { cookie } });
+
+  check("비로그인 되돌리기", 401, (await fetch(`${APP}/api/imports/${importId}/memories`, {
+    method: "DELETE", redirect: "manual" })).status);
+  check("없는 가져오기 되돌리기", 404, (await del(randomUUID())).status);
+  check("없는 가져오기 다시 뽑기", 404, (await redo(randomUUID())).status);
+
+  const forgot = await del(importId);
+  const forgotBody = await forgot.json();
+  check("가져오기 단위로 잊기", 200, forgot.status, JSON.stringify(forgotBody));
+  check("잊은 수가 만든 수와 같다", after.length, forgotBody.forgotten);
+
+  const remaining = await admin("GET", `/rest/v1/memories?owner_id=eq.${owner.id}&select=id,status`);
+  check("행은 남고 상태만 바뀐다", after.length, remaining.length);
+  check("모두 DELETED", true, remaining.every((m) => m.status === "DELETED"));
+  check("두 번 눌러도 0건", 0, (await (await del(importId)).json()).forgotten);
+
+  const again2 = await redo(importId);
+  const again2Body = await again2.json();
+  check("같은 원문으로 다시 뽑기", 201, again2.status);
+  check("새 가져오기가 만들어진다", true, again2Body.importId !== importId);
+  const redone = await (await fetch(`${APP}/api/imports/${again2Body.importId}`, { headers: { cookie } })).json();
+  check("원문이 그대로 쓰인다", true, redone.rawText === RAW);
+  check("새 후보는 전부 PENDING", true, redone.candidates.every((c) => c.status === "PENDING"));
+  check("다시 뽑아도 기억은 늘지 않는다", 0,
+    (await admin("GET", `/rest/v1/memories?owner_id=eq.${owner.id}&status=eq.ACTIVE&select=id`)).length);
+  check("예전 기록도 남는다", true,
+    (await (await fetch(`${APP}/api/imports`, { headers: { cookie } })).json()).imports.length === 2);
+
+
+  // 잊은 기억이 Context에 남아 있으면 삭제가 의미를 잃는다.
+  const afterForget = await fetch(`${APP}/api/chat`, {
+    method: "POST", headers: { "Content-Type": "application/json", cookie },
+    body: JSON.stringify({ content: "내 배경을 아는 대로 말해줘.", clientRequestId: randomUUID(), conversationId: null }),
+  });
+  const r2 = afterForget.body.getReader(); const d2 = new TextDecoder();
+  let b2 = "", start2 = null;
+  for (;;) {
+    const { done, value } = await r2.read(); if (done) break;
+    b2 += d2.decode(value, { stream: true });
+    let nl;
+    while ((nl = b2.indexOf("\n")) >= 0) {
+      const raw = b2.slice(0, nl).trim(); b2 = b2.slice(nl + 1);
+      if (!raw) continue;
+      const e = JSON.parse(raw);
+      if (e.type === "start") start2 = e;
+    }
+  }
+  check("잊은 기억은 더 전달되지 않는다", 0, start2?.usedMemories.length ?? -1);
 } finally {
   await admin("DELETE", `/auth/v1/admin/users/${owner.id}`);
   await admin("DELETE", `/auth/v1/admin/users/${other.id}`);

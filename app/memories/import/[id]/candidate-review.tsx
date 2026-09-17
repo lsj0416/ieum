@@ -84,6 +84,10 @@ export function CandidateReview({ data }: { data: MemoryImportWithCandidates }) 
           <p className="text-xs opacity-60">
             고른 것만 기억이 된다. 고르지 않은 것은 제외로 남는다. 내용과 종류는 고칠 수 있다.
           </p>
+          <p className="text-xs opacity-60">
+            원문이 긴 기간을 담고 있으면 지나간 이야기가 섞인다. <strong>지금도 그런지</strong>를
+            기준으로 보고, 지난 일이라면 종류를 &lsquo;사건&rsquo;으로 바꾸거나 제외한다.
+          </p>
 
           <ul className="flex flex-col gap-2">
             {pending.map((c) => {

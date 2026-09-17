@@ -123,28 +123,89 @@ export type ExtractedCandidate = {
 };
 
 /**
+ * 출력 상한에 걸려 끊긴 JSON 배열에서 온전한 항목까지만 되살린다.
+ *
+ * 긴 글을 가져오면 모델 답변이 상한에서 잘린다. 잘린 JSON은 파싱되지
+ * 않는데, 그렇다고 전부 버리면 이미 나온 스무 개도 함께 사라진다.
+ * 호출 비용은 이미 나갔다.
+ *
+ * 마지막으로 닫힌 객체(`}`)까지 자르고 배열을 닫아 다시 읽는다. 문자열
+ * 안에 있는 `}`를 객체의 끝으로 오해하지 않도록 따옴표와 이스케이프를
+ * 따라가며 센다.
+ */
+function repairTruncatedArray(body: string): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let lastComplete = -1;
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      // 배열 바로 아래의 객체가 닫힌 자리다. 여기까지는 온전하다.
+      if (depth === 0) lastComplete = i;
+    }
+  }
+
+  if (lastComplete === -1) return null;
+  return body.slice(0, lastComplete + 1) + "]";
+}
+
+/**
  * 모델이 뱉은 JSON을 후보 목록으로 바꾼다.
  *
  * 모델 출력도 외부 입력이다. 형식이 틀린 항목은 버리고 남은 것만 쓴다.
  * 하나가 틀렸다고 전체를 버리면 사용자는 아무것도 얻지 못한다.
  *
- * 앞뒤에 설명이 붙어 오는 경우가 있어 첫 `[`부터 마지막 `]`까지만 읽는다.
+ * 앞뒤에 설명이 붙어 오는 경우가 있어 첫 `[`부터 읽는다. 닫는 `]`가
+ * 없으면 상한에 걸려 잘린 것이므로 온전한 항목까지 살리고 그 사실을
+ * truncated로 알린다.
  */
 export function parseExtractedCandidates(
   text: string,
-): { ok: true; value: ExtractedCandidate[]; dropped: number } | { ok: false; message: string } {
+): { ok: true; value: ExtractedCandidate[]; dropped: number; truncated: boolean } | { ok: false; message: string } {
   const start = text.indexOf("[");
+  if (start === -1) return { ok: false, message: "정리 결과를 읽지 못했다." };
+
   const end = text.lastIndexOf("]");
-  if (start === -1 || end === -1 || end < start) {
-    return { ok: false, message: "정리 결과를 읽지 못했다." };
+  let truncated = false;
+  let parsed: unknown;
+
+  const readAsArray = (source: string): unknown | null => {
+    try {
+      return JSON.parse(source);
+    } catch {
+      return null;
+    }
+  };
+
+  parsed = end > start ? readAsArray(text.slice(start, end + 1)) : null;
+
+  if (parsed === null) {
+    // 닫히지 않았거나 중간에 끊겼다. 온전한 항목까지만 되살린다.
+    const repaired = repairTruncatedArray(text.slice(start + 1));
+    parsed = repaired === null ? null : readAsArray("[" + repaired);
+    if (parsed === null) return { ok: false, message: "정리 결과를 읽지 못했다." };
+    truncated = true;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return { ok: false, message: "정리 결과를 읽지 못했다." };
-  }
   if (!Array.isArray(parsed)) return { ok: false, message: "정리 결과가 목록이 아니다." };
 
   const value: ExtractedCandidate[] = [];
@@ -182,5 +243,5 @@ export function parseExtractedCandidates(
     });
   }
 
-  return { ok: true, value, dropped };
+  return { ok: true, value, dropped, truncated };
 }
