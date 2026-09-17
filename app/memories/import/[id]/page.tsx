@@ -6,6 +6,7 @@ import { requireOwner } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getImport } from "@/src/server/memory/import-service";
 import { CandidateReview } from "./candidate-review";
+import { ImportActions } from "./import-actions";
 
 export const metadata: Metadata = {
   title: "가져온 내용 검토 · ieum",
@@ -49,6 +50,11 @@ export default async function ImportReviewPage({
         ) : null}
 
         <CandidateReview data={data} />
+
+        <ImportActions
+          importId={data.id}
+          acceptedCount={data.candidates.filter((c) => c.status === "ACCEPTED").length}
+        />
 
         {/* 근거를 대조할 수 있게 원문을 남겨둔다. 접어두는 것은 길어서다. */}
         <details className="rounded-md border border-black/10 p-3 dark:border-white/15">
