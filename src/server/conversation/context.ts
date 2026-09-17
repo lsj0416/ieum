@@ -217,17 +217,23 @@ function renderMemories(memories: ContextMemory[]): string {
   if (imported.length > 0) {
     parts.push(
       [
-        "아래는 사용자가 다른 AI에서 정리해 옮겨 온 내용이다. 사용자가 확인해 받아들였지만,",
-        "가져온 시점의 정리이므로 지금도 그런지는 확인되지 않았다.",
+        "아래는 사용자가 다른 AI에서 정리한 내용을 옮겨 와 직접 검토하고 받아들인 것이다.",
+        "사용자가 승인한 내용이므로 아는 것으로 취급하고 답할 때 사용한다.",
         ...imported.map((m) => {
           const origin = m.origin!;
-          const from = `${origin.sourceLabel}에서 ${origin.importedAt.slice(0, 10)}에 가져옴`;
+          const from = `${origin.sourceLabel} 정리, ${origin.importedAt.slice(0, 10)} 확인`;
           // 사용자 발언과 외부 AI의 추정을 끝까지 구분해 전달한다.
           const kindOfClaim = m.source === "MODEL" ? ", 외부 AI의 추정" : "";
           return `- [${KIND_LABEL[m.kind]}] ${m.content} (${from}${kindOfClaim})`;
         }),
         "",
-        "가져온 내용을 현재 사실로 단정하지 않는다. 특히 목표와 진행 상태는 지금도 같은지 확인한다.",
+        // 여기서 세게 말하면 모델이 아는 것까지 모른다고 답한다. 실사용에서
+        // "과거 정보뿐이고 현재도 그런지는 확인되지 않았다"만 반복했다
+        // (2026-09-18). 쓰지 말라는 것이 아니라 단정하지 말라는 것이다.
+        "경력·경험·선호처럼 잘 바뀌지 않는 것은 그대로 사용한다.",
+        "목표와 진행 상태는 바뀔 수 있으니 언제 기준인지 밝히고 말한다. 중요한 판단이 걸리면 지금도 같은지 묻되, 묻기 전에 아는 것을 먼저 말한다.",
+        "'외부 AI의 추정'이라고 적힌 것은 사용자가 직접 한 말이 아니므로 사실로 단정하지 않는다.",
+        "아는 것을 모른다고 말하지 않는다.",
         "이 내용과 이후 대화에서 확인된 내용이 다르면 이후 대화 쪽을 따른다.",
       ].join("\n"),
     );
