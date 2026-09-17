@@ -13,6 +13,7 @@ import type {
   MemoryImportWithCandidates,
 } from "./import-types";
 import type { MemoryKind } from "./types";
+import { looksSensitive } from "./sensitive";
 
 /**
  * 한 번에 만들 수 있는 후보의 최대 개수.
@@ -87,27 +88,6 @@ const EXTRACT_SYSTEM = [
   `- 20개 안팎을 기준으로 하고 아무리 많아도 ${MAX_CANDIDATES}개를 넘기지 않는다.`,
   "- 뽑을 것이 없으면 빈 배열 []을 출력한다.",
 ].join("\n");
-
-/**
- * 민감 정보로 보이는 형태.
- *
- * 모델의 판정만 믿지 않는다. 모델이 놓쳐도 여기서 걸리면 기본 제외된다.
- * 반대로 여기 없다고 안전하다는 뜻은 아니므로 모델 판정과 합집합으로 쓴다.
- */
-const SENSITIVE_PATTERNS: { label: string; re: RegExp }[] = [
-  { label: "주민등록번호", re: /\b\d{6}\s*-\s*[1-4]\d{6}\b/ },
-  { label: "카드번호", re: /\b(?:\d{4}[\s-]?){3}\d{4}\b/ },
-  { label: "계좌번호", re: /\b\d{2,6}-\d{2,6}-\d{2,8}\b/ },
-  { label: "전화번호", re: /\b01[016-9][\s-]?\d{3,4}[\s-]?\d{4}\b/ },
-  { label: "여권번호", re: /\b[MSRO]\d{8}\b/ },
-  { label: "비밀번호", re: /비밀번호|패스워드|password/i },
-  { label: "건강", re: /질병|진단|우울증|장애|복용|병원\s*진료|수술/ },
-  { label: "신념", re: /종교|교회|성당|절에\s*다|정치\s*성향|지지\s*정당/ },
-];
-
-function looksSensitive(text: string): boolean {
-  return SENSITIVE_PATTERNS.some((p) => p.re.test(text));
-}
 
 /** 공백 차이를 무시하고 비교하기 위해 정규화한다. */
 function normalize(text: string): string {
