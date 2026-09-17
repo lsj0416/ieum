@@ -10,6 +10,15 @@ export type ContextMemory = {
   id: string;
   kind: "FACT" | "PREFERENCE" | "GOAL" | "EPISODE";
   content: string;
+  /** USER는 사용자가 직접 밝힌 것, MODEL은 외부 AI의 추정이다. */
+  source: "USER" | "MODEL";
+  /**
+   * 외부에서 가져온 기억이면 어디서 언제 가져왔는지.
+   *
+   * 직접 등록한 기억과 같은 줄에 섞어 두면 모델이 둘을 구분하지 못한다.
+   * 가져온 것은 그 시점의 정리이므로 지금도 유효한지 단정하면 안 된다(06 8절).
+   */
+  origin: { sourceLabel: string; importedAt: string } | null;
 };
 
 /** 진행 중인 일. 마지막 결정과 다음 행동을 함께 전달한다. */
@@ -185,15 +194,48 @@ const KIND_LABEL: Record<ContextMemory["kind"], string> = {
  *
  * 이 기억들이 확인된 것임을 밝히되, 여기 없는 것을 추측하지 말라고
  * 함께 적는다. 목록을 주면 모델은 그 사이를 메우려 든다.
+ *
+ * 직접 등록한 기억과 외부에서 가져온 기억은 나눠서 적는다. 가져온 것은
+ * 정리된 시점이 있고 그 뒤로 바뀌었을 수 있다. 같은 목록에 섞으면
+ * 모델이 과거의 목표를 현재의 목표로 말한다(06 8절).
  */
 function renderMemories(memories: ContextMemory[]): string {
-  const lines = memories.map((m) => `- [${KIND_LABEL[m.kind]}] ${m.content}`);
-  return [
-    "아래는 사용자가 직접 등록해 확인된 기억이다.",
-    ...lines,
-    "",
-    "여기 없는 개인 정보는 모른다고 말한다. 목록을 메우려고 추측하지 않는다.",
-  ].join("\n");
+  const own = memories.filter((m) => m.origin === null);
+  const imported = memories.filter((m) => m.origin !== null);
+
+  const parts: string[] = [];
+
+  if (own.length > 0) {
+    parts.push(
+      [
+        "아래는 사용자가 직접 등록해 확인된 기억이다.",
+        ...own.map((m) => `- [${KIND_LABEL[m.kind]}] ${m.content}`),
+      ].join("\n"),
+    );
+  }
+
+  if (imported.length > 0) {
+    parts.push(
+      [
+        "아래는 사용자가 다른 AI에서 정리해 옮겨 온 내용이다. 사용자가 확인해 받아들였지만,",
+        "가져온 시점의 정리이므로 지금도 그런지는 확인되지 않았다.",
+        ...imported.map((m) => {
+          const origin = m.origin!;
+          const from = `${origin.sourceLabel}에서 ${origin.importedAt.slice(0, 10)}에 가져옴`;
+          // 사용자 발언과 외부 AI의 추정을 끝까지 구분해 전달한다.
+          const kindOfClaim = m.source === "MODEL" ? ", 외부 AI의 추정" : "";
+          return `- [${KIND_LABEL[m.kind]}] ${m.content} (${from}${kindOfClaim})`;
+        }),
+        "",
+        "가져온 내용을 현재 사실로 단정하지 않는다. 특히 목표와 진행 상태는 지금도 같은지 확인한다.",
+        "이 내용과 이후 대화에서 확인된 내용이 다르면 이후 대화 쪽을 따른다.",
+      ].join("\n"),
+    );
+  }
+
+  parts.push("여기 없는 개인 정보는 모른다고 말한다. 목록을 메우려고 추측하지 않는다.");
+
+  return parts.join("\n\n");
 }
 
 /**

@@ -76,6 +76,9 @@ export function MemoryItem({ memory }: { memory: MemoryWithEvidence }) {
           </span>
           {/* 정정을 거친 기억임을 드러낸다. 몇 번째 판인지 알 수 있어야 한다. */}
           {memory.supersedesId ? <span className="text-xs opacity-50">정정됨</span> : null}
+          {/* 직접 등록한 것과 외부에서 가져온 것을 화면에서도 구분한다. */}
+          {memory.originImportId ? <span className="text-xs opacity-50">가져옴</span> : null}
+          {memory.source === "MODEL" ? <span className="text-xs opacity-50">AI 추정</span> : null}
         </div>
 
         {!editing ? (
@@ -206,7 +209,13 @@ export function MemoryItem({ memory }: { memory: MemoryWithEvidence }) {
               >
                 {e.quote}
                 <span className="pl-1 opacity-60">
-                  ({e.sourceKind === "CHAT" ? "대화에서" : "직접 입력"})
+                  (
+                  {e.sourceKind === "CHAT"
+                    ? "대화에서"
+                    : e.sourceKind === "IMPORT"
+                      ? "가져온 원문에서"
+                      : "직접 입력"}
+                  )
                 </span>
               </li>
             ))}
